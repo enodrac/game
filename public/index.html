@@ -1,0 +1,131 @@
+<html>
+  <head>
+    <link rel="stylesheet" href="styles.css" />
+    <link
+      href="https://fonts.googleapis.com/css2?family=Baloo+2:wght@400;600;800&display=swap"
+      rel="stylesheet"
+    />
+  </head>
+  <body>
+    <div id="themes" class="themes hidden box">
+      <div class="themes_list">
+        <div id="handle_theme" class="handle button"></div>
+        <div id="default" class="theme-default example_color selected"></div>
+        <div id="green" class="theme-green example_color"></div>
+        <div id="blue" class="theme-blue example_color"></div>
+        <div id="red" class="theme-red example_color"></div>
+      </div>
+    </div>
+    <div id="middle" class="middle box">
+      <div id="player_customization" class="player_customization">
+        <canvas id="player_example" class="player_example"></canvas>
+        <div class="slider">
+          <input
+            type="range"
+            id="red_slider"
+            class="red_slider"
+            min="0"
+            max="255"
+            step="1"
+          />
+          <div id="red_slider_value" class="slider_value"></div>
+        </div>
+        <div class="slider">
+          <input
+            type="range"
+            id="green_slider"
+            class="green_slider"
+            min="0"
+            max="255"
+            step="1"
+          />
+          <div id="green_slider_value" class="slider_value"></div>
+        </div>
+        <div class="slider">
+          <input
+            type="range"
+            id="blue_slider"
+            class="blue_slider"
+            min="0"
+            max="255"
+            step="1"
+          />
+          <div id="blue_slider_value" class="slider_value"></div>
+        </div>
+        <div id="random_color_button" class="random_color button">
+          Aleatorio
+        </div>
+      </div>
+      <div id="init" class="init">
+        <input
+          id="name"
+          class="name input"
+          placeholder="Nombre..."
+          type="text"
+        />
+        <div class="buttons_container">
+          <div id="create" class="create button disable">Crear partida</div>
+        </div>
+      </div>
+      <div id="loby" class="loby">
+        <div id="loby_label" class="loby_label"></div>
+        <div id="players" class="players"></div>
+        <div class="buttons">
+          <div id="start_button" class="start button">Empezar</div>
+          <div id="cancel_button" class="cancel button">Cancelar</div>
+        </div>
+        <div id="connect_twitch" class="connect_twitch button">
+          Conectar a twitch
+        </div>
+      </div>
+      <div id="game_customization" class="game_customization">
+        <div class="title">Opciones</div>
+        <!-- <div id="handle_customization" class="handle button"></div> -->
+        <div id="options" class="options"></div>
+      </div>
+    </div>
+    <div id="lobies" class="lobies box">
+      <div class="title">Salas</div>
+      <div id="games" class="games"></div>
+      <div id="join" class="join disable button">Unirme</div>
+    </div>
+    <div id="chat" class="chat hidden box">
+      <div class="chat_content">
+        <div id="handle_chat" class="handle button"></div>
+        <div id="messages" class="messages"></div>
+        <div class="input_content">
+          <input
+            id="message_input"
+            class="message input"
+            placeholder="Mensaje..."
+            type="text"
+          />
+          <div id="message_button" class="message button disable">Enviar</div>
+        </div>
+      </div>
+    </div>
+    <div id="victory" class="victory">
+      <div class="victory_content box">
+        <div class="title">GANADOR</div>
+        <div class="crown"></div>
+        <div id="winner" class="winner">Enodrac</div>
+        <div id="continue_button" class="continue button">Continuar</div>
+      </div>
+    </div>
+    <div id="info" class="info box">
+      <div id="goal" class="goal"></div>
+      <div id="time" class="title"></div>
+      <div id="scores" class="scores"></div>
+      <div id="leave_button" class="leave button">Abandonar</div>
+    </div>
+    <canvas id="game_canvas" class="game_canvas"></canvas>
+    <script
+      src="https://cdnjs.cloudflare.com/ajax/libs/gsap/3.10.2/gsap.min.js"
+      integrity="sha512-kVlGhj2qFy+KBCFuvjBJTGUMxbdqJKs4yK2jh0e0VPhWUPiPC87bzm4THmaaIee3Oj7j6sDpTTgm2EPPiESqBg=="
+      crossorigin="anonymous"
+      referrerpolicy="no-referrer"
+    ></script>
+    <script src="https://cdn.socket.io/4.6.1/socket.io.min.js"></script>
+    <script src="./script.js"></script>
+  </body>
+</html>
