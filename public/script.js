@@ -1,3 +1,4 @@
+// FRONTEND CODE
 let gameData
 let movement = {}
 let settings
@@ -6,124 +7,268 @@ let socket = io()
 
 /*
   TODO
-    - CAMBIAR VELCIDAD DE JUGADOR POR OPCIONES DEL JUEGO
-    - CAMBIAR VELCIDAD DE LA PELOTA POR OPCIONES DEL JUEGO
-  X - ANIMACION DE VICTORIA
-  X - SOFT RESET CUANDO HAY VICTORIA
-    - EFECTOS AL ANOTAR UN GOL
-  X - COLOR ALEATORIO NO CAMBIA EL MINI_PLAYER
-  X - PELOTA CON COLOR DE QUIEN LE PEGO
-    - CUANDO EL DUEÑO SE VA QUE CAMBIE EL NOMBRE DE LA SALA Y EL DUEÑO DEL A PARTIDA
-  X - VICTORIA POR PUNTOS
-  X - VICTORIA POR TIEMPO
-  X - DESEMPATE
+    - MANEJO DE PODERES
+    -- PULSO (la pelota aparece y desaparece pero sigue el mismo trajecto)
+    -- ECO (aparecen n pelotas mas)
+    -- TURBO (aumenta la velocidad de la pelota n%)
+    -- REDUCCION (reduce el tamaño de la pelota en n%)
+    -- CAOS (la pelota se mueve erraticamente)
+    -- DISRUPCIÓN (los controles de los jugadores se invierten)
+    -- MUTACIÓN (cambia el poligono de los jugadores)
+    -- INERCIA (los jugadores se deslizan como si estuvieran en hielo)
+    -- GIRO (el poligono gira lentamente para cambiar la perspectiva)
 */
 
-socket.on('games', (games) => {
-  let auxGameData
+// Store client-side player history
+let clientSidePrediction = {}
+
+class Particle {
+  constructor(x, y, color) {
+    this.x = x
+    this.y = y
+    const angle = Math.random() * 2 * Math.PI
+    const speed = Math.random() * 6
+    this.color = color
+    this.vx = Math.cos(angle) * speed
+    this.vy = Math.sin(angle) * speed
+    this.size = Math.random() * 30
+    this.life = 60
+  }
+
+  update(canvasContext) {
+    this.x += this.vx
+    this.y += this.vy
+    this.life--
+    this.size *= 0.95
+    this.draw(canvasContext)
+  }
+
+  draw(canvasContext) {
+    canvasContext.globalAlpha = this.life / 60
+    canvasContext.fillStyle = this.color
+    canvasContext.beginPath()
+    canvasContext.shadowColor = 'white'
+    canvasContext.shadowBlur = 10
+    canvasContext.arc(this.x, this.y, this.size, 0, Math.PI * 2)
+    canvasContext.fill()
+    canvasContext.globalAlpha = 1
+  }
+}
+
+socket.on('lobies', (games) => {
   for (let id in games) {
-    let game = games[id]
-    if (game.players[socket.id]) {
-      auxGameData = games[id]
-      auxGameData.id = id
+    if (!lobies[id]) {
+      lobies[id] = games[id]
+      let loby = document.createElement('div')
+      loby.textContent = `${games[id].name}: ${games[id].playerCount}`
+      loby.id = id
+      loby.classList.add('game')
+      loby.classList.add('button')
+      loby.addEventListener('click', (event) => {
+        let selected = event.target.className.includes('selected')
+        document
+          .querySelectorAll('.game')
+          .forEach((item) => item.classList.remove('selected'))
+        loby.classList.add('selected')
+        if (!selected) {
+          document.getElementById('join').classList.remove('disable')
+        }
+      })
+      lobies[id].display = 'flex'
+      document.getElementById('games').appendChild(loby)
+    } else if (games[id].polygon && lobies[id].display !== 'none') {
+      document.getElementById(id).style.display = 'none'
+      lobies[id].display = 'none'
+    } else if (!games[id].polygon && lobies[id].display !== 'flex') {
+      document.getElementById(id).style.display = 'flex'
+      lobies[id].display = 'flex'
+    } else if (
+      lobies[id].playerCount !== games[id].playerCount ||
+      lobies[id].name !== games[id].name
+    ) {
+      document.getElementById(
+        id
+      ).innerText = `${games[id].name}: ${games[id].playerCount}`
     }
   }
-  if (auxGameData) {
-    gameData = auxGameData
-    if (gameData.winner) {
-      document.getElementById('victory').classList.add('show')
-    } else {
-      document.getElementById('victory').classList.remove('show')
+  for (let id in lobies) {
+    if (!games[id]) {
+      document.getElementById(id).remove()
+      delete lobies[id]
     }
-    document.getElementById('lobies').style.display = 'none'
-    document.getElementById('chat').style.display = 'flex'
-    document.getElementById('loby_label').innerText = gameData.name
-    if (gameData.owner === socket.id) {
-      document.getElementById('connect_twitch').style.display = 'flex'
+  }
+})
+
+socket.on('create', (game) => {
+  gameData = game
+  handleDisplayGameInit()
+})
+
+socket.on('start', () => {
+  document.getElementById('game_canvas').style.display = 'flex'
+  document.getElementById('info').style.display = 'flex'
+  document.getElementById('middle').style.display = 'none'
+})
+
+socket.on('cancel', () => {
+  gameData = undefined
+  document.getElementById('middle').style.display = 'flex'
+  document.getElementById('init').style.display = 'flex'
+  document.getElementById('lobies').style.display = 'flex'
+  document.getElementById('game_customization').style.display = 'none'
+  document.getElementById('info').style.display = 'none'
+  document.getElementById('loby').style.display = 'none'
+  document.getElementById('chat').style.display = 'none'
+  document.getElementById('game_canvas').style.display = 'none'
+  document.getElementById('options').innerHTML = ''
+})
+
+socket.on('restart', (game) => {
+  gameData = game
+  handleDisplayGameInit()
+})
+
+socket.on('loby', (game) => {
+  gameData = game
+  if (gameData.messages.length) {
+    setMessages(gameData)
+  }
+  setLobyPlayers()
+})
+
+socket.on('messages', (game) => {
+  if (game.messages.length) {
+    setMessages(game)
+  }
+})
+
+socket.on('game', (game) => {
+  gameData = game
+})
+
+socket.on('victory', (game) => {
+  gameData = game
+  document.getElementById('victory').classList.add('show')
+})
+
+socket.on('aberrations', (data) => {
+  if (!data) {
+    document.getElementById('aberrations').innerHTML = ``
+  } else if (data.aberration) {
+    document.getElementById('aberrations').innerHTML = `
+      <div class="aberration box selected" style="background: var(--accent)">
+      ${data.aberration.name}
+      </div>
+    `
+  } else if (data.choises) {
+    for (let name in data.choises) {
+      let choise = data.choises[name]
+      let aberration = document.createElement('div')
+      aberration.id = choise.name
+      aberration.classList.add('box')
+      aberration.classList.add('aberration')
+      aberration.innerText = choise.name
+      aberration.addEventListener('click', (event) => {
+        let selected = event.target.className.includes('selected')
+        document
+          .querySelectorAll('.aberration')
+          .forEach((item) => item.classList.remove('selected'))
+        if (!selected) {
+          document.getElementById(choise.name).classList.add('selected')
+        }
+        socket.emit('aberrations', { game: gameData.id, choise })
+      })
+      document.getElementById('aberrations').appendChild(aberration)
     }
-    if (!gameData.polygon) {
-      document.getElementById('middle').style.display = 'flex'
-      document.getElementById('init').style.display = 'none'
-      document.getElementById('loby').style.display = 'flex'
-      document.getElementById('game_customization').style.display = 'flex'
-      document.getElementById('info').style.display = 'none'
-      document.getElementById('game_canvas').style.display = 'none'
-      if (!settings) {
-        handleSettings()
-      }
-    } else {
-      document.getElementById('middle').style.display = 'none'
-      document.getElementById('game_canvas').style.display = 'flex'
-      // document.getElementById('middle').style.display = 'flex'
-      document.getElementById('info').style.display = 'flex'
-      document.getElementById('options').innerHTML = ''
-      settings = undefined
+  } else {
+    let totalVotes = 0
+    for (let name in data) {
+      totalVotes += Object.keys(data[name].votes).length
     }
-    if (gameData.messages) {
-      messages = []
-      gameData.messages.forEach((item) => {
-        messages.push(`
+    for (let name in data) {
+      let aberration = document.getElementById(name)
+      let percentage = (Object.keys(data[name].votes).length * 100) / totalVotes
+      aberration.style.background = `linear-gradient(
+        90deg,
+        var(--accent) ${percentage}%,
+        var(--background) ${percentage ? percentage + 5 : 0}%
+      )`
+    }
+  }
+})
+
+const handleDisplayGameInit = () => {
+  document.getElementById('options').innerHTML = ''
+  document.getElementById('victory').classList.remove('show')
+  document.getElementById('middle').style.display = 'flex'
+  document.getElementById('player_customization').style.display = 'flex'
+  document.getElementById('loby').style.display = 'flex'
+  document.getElementById('chat').style.display = 'flex'
+  document.getElementById('loby_label').innerText = gameData.name
+  if (gameData.owner === socket.id) {
+    document.getElementById('game_customization').style.display = 'flex'
+    document.getElementById('connect_twitch').style.display = 'flex'
+    document.getElementById('start_button').style.display = 'flex'
+  } else {
+    document.getElementById('game_customization').style.display = 'none'
+    document.getElementById('connect_twitch').style.display = 'none'
+    document.getElementById('start_button').style.display = 'none'
+  }
+  document.getElementById('init').style.display = 'none'
+  document.getElementById('lobies').style.display = 'none'
+  document.getElementById('game_canvas').style.display = 'none'
+  document.getElementById('info').style.display = 'none'
+  handleSettings()
+  setLobyPlayers()
+}
+
+const setMessages = (game) => {
+  document.getElementById('messages').innerHTML = game.messages
+    .map(
+      (item) => `
           <div class="message" style="color: ${
-            gameData.players[item.player].color
+            item.id
+              ? game.players[item.player]
+                ? game.players[item.player].color
+                : item.player.color
+              : item.player.color
           }">
+          <span class="time">
+          ${new Date(item.time).toLocaleTimeString([], {
+            hour: '2-digit',
+            minute: '2-digit',
+            hour12: false
+          })}
+          </span>
           <span class="player">
-          ${gameData.players[item.player].name}:
+          ${
+            item.id
+              ? game.players[item.player]
+                ? game.players[item.player].name
+                : item.player.name
+              : item.player.name
+          }:
           </span>
           <span class="text">
           ${item.message}
           </span>
           </div>
-          `)
-      })
-      if (messages.length) {
-        document.getElementById('messages').innerHTML = messages.join('')
-      }
-    }
-  } else {
-    document.getElementById('middle').style.display = 'flex'
-    document.getElementById('init').style.display = 'flex'
-    document.getElementById('lobies').style.display = 'flex'
-    document.getElementById('chat').style.display = 'none'
-    document.getElementById('loby_label').innerText = ''
-    document.getElementById('game_canvas').style.display = 'none'
-    document.getElementById('loby').style.display = 'none'
-    document.getElementById('game_customization').style.display = 'none'
-    document.getElementById('info').style.display = 'none'
-    document.getElementById('options').innerHTML = ''
-    gameData = undefined
-    settings = undefined
-  }
-  if (!gameData) {
-    for (let id in games) {
-      if (!lobies[id]) {
-        lobies[id] = true
-        let loby = document.createElement('div')
-        loby.textContent = `${games[id].name}: ${games[id].playerCount}`
-        loby.id = id
-        loby.classList.add('game')
-        loby.classList.add('button')
-        loby.addEventListener('click', () => {
-          document
-            .querySelectorAll('.game')
-            .forEach((item) => item.classList.remove('selected'))
-          loby.classList.add('selected')
-          document.getElementById('join').classList.remove('disable')
-        })
-        document.getElementById('games').appendChild(loby)
-      } else if (lobies[id].playerCount !== games[id].playerCount) {
-        document.getElementById(
-          id
-        ).innerText = `${games[id].name}: ${games[id].playerCount}`
-      }
-    }
-    for (let id in lobies) {
-      if (!games[id]) {
-        document.getElementById(id).remove()
-        delete lobies[id]
-      }
-    }
-  }
-})
+          `
+    )
+    .join('')
+}
+
+const setLobyPlayers = () => {
+  document.getElementById('players').innerHTML = Object.values(gameData.players)
+    .map(
+      (player) =>
+        `<div class="player box">
+        ${player.name}
+          <div class="mini_player" style="background-color: ${player.color};"></div>
+        </div>`
+    )
+    .join('')
+}
 
 const shadeColor = (color, percent) => {
   let [r, g, b] = color.match(/\d+/g).map(Number)
@@ -157,8 +302,44 @@ const formatTime = (seconds) => {
 }
 
 const handleSettings = () => {
+  let gameModeOptions = []
+  document.querySelectorAll('.game_mode').forEach((item) => {
+    if (item.className.includes('selected')) {
+      if (item.id === 'button_points') {
+        gameModeOptions = [
+          {
+            label: `Puntos para ganar`,
+            key: 'goal',
+            value: 10,
+            min: 1,
+            max: 50
+          }
+        ]
+      } else {
+        gameModeOptions = [
+          {
+            label: `Vida del jugador`,
+            key: 'health',
+            value: 100,
+            min: 10,
+            max: 100,
+            step: 10
+          },
+          {
+            label: `Daño de la pelota`,
+            key: 'damage',
+            value: 20,
+            min: 5,
+            max: 100,
+            step: 5
+          }
+        ]
+      }
+    }
+  })
   settings = {}
   let options = [
+    ...gameModeOptions,
     {
       label: `Velocidad del jugador`,
       key: 'playerSpeed',
@@ -179,13 +360,6 @@ const handleSettings = () => {
       value: 5,
       min: 1,
       max: 10
-    },
-    {
-      label: `Puntos para ganar`,
-      key: 'goal',
-      value: 10,
-      min: 1,
-      max: 50
     }
   ]
   options.forEach((item) => {
@@ -202,7 +376,7 @@ const handleSettings = () => {
     arrowLeft.classList.add('arrow')
     arrowLeft.classList.add('left')
     arrowLeft.addEventListener('click', () => {
-      let newValue = settings[item.key] - 1
+      let newValue = settings[item.key] - (item.step || 1)
       if (newValue >= item.min && newValue <= item.max) {
         settings[item.key] = newValue
         value.innerText = newValue
@@ -212,7 +386,7 @@ const handleSettings = () => {
     arrowRight.classList.add('arrow')
     arrowRight.classList.add('right')
     arrowRight.addEventListener('click', () => {
-      let newValue = settings[item.key] + 1
+      let newValue = settings[item.key] + (item.step || 1)
       if (newValue >= item.min && newValue <= item.max) {
         settings[item.key] = newValue
         value.innerText = newValue
@@ -225,6 +399,14 @@ const handleSettings = () => {
     document.getElementById('options').appendChild(option)
   })
 }
+
+let particles = []
+socket.on('goalScored', (data) => {
+  const numParticles = 101
+  for (let i = 0; i < numParticles; i++) {
+    particles.push(new Particle(data.x, data.y, data.color))
+  }
+})
 
 const engine = () => {
   requestAnimationFrame(engine)
@@ -273,8 +455,8 @@ const engine = () => {
       )
     }
     document.getElementById('scores').innerHTML = scores.join('')
-    const canvas = document.getElementById('game_canvas')
-    const canvasContext = canvas.getContext('2d')
+    let canvas = document.getElementById('game_canvas')
+    let canvasContext = canvas.getContext('2d')
     // Clear canvas
     canvasContext.fillStyle = '#292929'
     canvasContext.fillRect(0, 0, innerWidth, innerHeight)
@@ -284,39 +466,44 @@ const engine = () => {
     canvas.height = window.innerHeight
 
     // Send movement input
-    if (movement.left || movement.right) {
+    if (
+      (movement.left || movement.right) &&
+      !gameData.winner &&
+      !gameData.countdownTimer
+    ) {
       socket.emit('player', { movement, gameId: gameData.id })
+      predictPlayerMovement(movement, gameData.id)
     }
 
-    const { a, b } = gameData.players?.[socket.id].side
-    const mx = (a.x + b.x) / 2
-    const my = (a.y + b.y) / 2
-    const cx = gameData.area.x
-    const cy = gameData.area.y
-    const dx = cx - mx
-    const dy = cy - my
-    const angle = Math.atan2(dy, dx) + Math.PI / 2
+    let { a, b } = gameData.players?.[socket.id].side
+    let mx = (a.x + b.x) / 2
+    let my = (a.y + b.y) / 2
+    let cx = gameData.area.x
+    let cy = gameData.area.y
+    let dx = cx - mx
+    let dy = cy - my
+    let angle = Math.atan2(dy, dx) + Math.PI / 2
 
     // === Rotate canvas to place player on the bottom ===
     canvasContext.translate(canvas.width / 2, canvas.height / 2)
     canvasContext.rotate(-angle)
     canvasContext.translate(-cx, -cy)
 
-    const center = { x: cx, y: cy }
-    const players = gameData.players
+    let center = { x: cx, y: cy }
+    let players = gameData.players
 
     // === Draw triangle areas + goal lines (layer 1) ===
-    for (const id in players) {
-      const player = players[id]
+    for (let id in players) {
+      let player = players[id]
 
-      const { a, b } = player.side
-      const { startT, endT } = player.goal
-      const goalOffset = gameData.playerCount > 5 ? 0 : 0.15
+      let { a, b } = player.side
+      let { startT, endT } = player.goal
+      let goalOffset = gameData.playerCount > 5 ? 0 : 0.15
 
-      const gx1 = a.x + (b.x - a.x) * (startT - goalOffset)
-      const gy1 = a.y + (b.y - a.y) * (startT - goalOffset)
-      const gx2 = a.x + (b.x - a.x) * (endT + goalOffset)
-      const gy2 = a.y + (b.y - a.y) * (endT + goalOffset)
+      let gx1 = a.x + (b.x - a.x) * (startT - goalOffset)
+      let gy1 = a.y + (b.y - a.y) * (startT - goalOffset)
+      let gx2 = a.x + (b.x - a.x) * (endT + goalOffset)
+      let gy2 = a.y + (b.y - a.y) * (endT + goalOffset)
 
       // Fill triangle area
       canvasContext.beginPath()
@@ -330,18 +517,25 @@ const engine = () => {
       canvasContext.globalAlpha = 1
 
       // Draw goal line
-      const trueGx1 = a.x + (b.x - a.x) * startT
-      const trueGy1 = a.y + (b.y - a.y) * startT
-      const trueGx2 = a.x + (b.x - a.x) * endT
-      const trueGy2 = a.y + (b.y - a.y) * endT
+      let trueGx1 = a.x + (b.x - a.x) * startT
+      let trueGy1 = a.y + (b.y - a.y) * startT
+      let trueGx2 = a.x + (b.x - a.x) * endT
+      let trueGy2 = a.y + (b.y - a.y) * endT
 
       canvasContext.beginPath()
       canvasContext.moveTo(trueGx1, trueGy1)
       canvasContext.lineTo(trueGx2, trueGy2)
+
+      if (player.leave) {
+        canvasContext.globalAlpha = 0.7
+        canvasContext.lineWidth = 4
+        canvasContext.shadowBlur = 4
+      } else {
+        canvasContext.shadowColor = 'white'
+        canvasContext.lineWidth = 10
+        canvasContext.shadowBlur = 10
+      }
       canvasContext.strokeStyle = player.color
-      canvasContext.lineWidth = 8
-      canvasContext.shadowColor = 'white'
-      canvasContext.shadowBlur = 10
       canvasContext.stroke()
       canvasContext.shadowBlur = 0
       canvasContext.save()
@@ -352,7 +546,7 @@ const engine = () => {
     canvasContext.strokeStyle = 'white'
     canvasContext.lineWidth = 2
     canvasContext.beginPath()
-    const vertices = gameData.polygon
+    let vertices = gameData.polygon
     canvasContext.moveTo(vertices[0].x, vertices[0].y)
     for (let i = 1; i < vertices.length; i++) {
       canvasContext.lineTo(vertices[i].x, vertices[i].y)
@@ -363,37 +557,36 @@ const engine = () => {
     canvasContext.restore()
     canvasContext.save()
 
-    for (const id in players) {
+    for (let id in players) {
       let player = players[id]
-      // Move to player center
-      canvasContext.translate(player.x, player.y)
-      // Reverse the canvas rotation
-      canvasContext.rotate(angle)
+      if (!player.leave) {
+        canvasContext.translate(player.x, player.y)
+        canvasContext.rotate(angle)
 
-      // Draw the gradient relative to (0,0)
-      const gradient = canvasContext.createRadialGradient(
-        -player.radius * 0.3,
-        -player.radius * 0.3,
-        player.radius * 0.1,
-        0,
-        0,
-        player.radius
-      )
+        let gradient = canvasContext.createRadialGradient(
+          -player.radius * 0.3,
+          -player.radius * 0.3,
+          player.radius * 0.1,
+          0,
+          0,
+          player.radius
+        )
 
-      gradient.addColorStop(0, 'white')
-      gradient.addColorStop(0.4, player.color)
-      gradient.addColorStop(1, shadeColor(player.color, -40))
+        gradient.addColorStop(0, 'white')
+        gradient.addColorStop(0.4, player.color)
+        gradient.addColorStop(1, shadeColor(player.color, -40))
 
-      canvasContext.fillStyle = gradient
-      canvasContext.beginPath()
-      canvasContext.arc(0, 0, player.radius, 0, Math.PI * 2)
-      canvasContext.fill()
+        canvasContext.fillStyle = gradient
+        canvasContext.beginPath()
+        canvasContext.arc(0, 0, player.radius, 0, Math.PI * 2)
+        canvasContext.fill()
 
-      canvasContext.restore()
-      canvasContext.save()
+        canvasContext.restore()
+        canvasContext.save()
+      }
     }
 
-    const ball = gameData.ball
+    let ball = gameData.ball
 
     canvasContext.save()
 
@@ -403,7 +596,7 @@ const engine = () => {
     canvasContext.rotate(angle)
 
     // Create gradient relative to (0, 0)
-    const gradient = canvasContext.createRadialGradient(
+    let gradient = canvasContext.createRadialGradient(
       -ball.radius * 0.4,
       -ball.radius * 0.4,
       ball.radius * 0.1,
@@ -426,6 +619,15 @@ const engine = () => {
 
     canvasContext.shadowBlur = 0
     canvasContext.restore()
+
+    for (let i = 0; i < particles.length; i++) {
+      particles[i].update(canvasContext)
+
+      if (particles[i].life <= 0) {
+        particles.splice(i, 1)
+        i--
+      }
+    }
 
     if (gameData.countdownTimer > 0) {
       canvasContext.restore() // undo the rotation
@@ -450,15 +652,6 @@ const engine = () => {
 
       return
     }
-  } else if (gameData) {
-    let players = []
-    for (const id in gameData.players) {
-      players.push(`<div class="player box">
-        ${gameData.players[id].name}
-          <div class="mini_player" style="background-color: ${gameData.players[id].color};"></div>
-        </div>`)
-    }
-    document.getElementById('players').innerHTML = players.join('')
   }
 }
 
@@ -484,7 +677,7 @@ const handleMovement = (event, start) => {
     movement.right = start
     if (start) movement.left = false
   }
-  emitIfChanged()
+  // emitIfChanged()
 }
 
 const handleCreate = () => {
@@ -505,14 +698,14 @@ const handleStart = () => {
 }
 
 const handleCancel = () => {
-  socket.emit('cancel')
+  socket.emit('cancel', { game: gameData.id })
 }
 
 const handleJoin = () => {
   const input = document.getElementById('name')
   const value = input.value
   let game = [...document.getElementsByClassName('selected')].pop()
-  socket.emit('join', { id: game.id, name: value })
+  socket.emit('join', { id: game.id, name: value, color: examplePlayer.color })
 }
 
 document.getElementById('name').addEventListener('input', (data) => {
@@ -583,7 +776,7 @@ const handleChat = (data) => {
     message.value?.length &&
     (data.key === 'Enter' || data.target.id === 'message_button')
   ) {
-    socket.emit('message', {
+    socket.emit('messages', {
       id: gameData.id,
       player: socket.id,
       message: message.value
@@ -592,6 +785,8 @@ const handleChat = (data) => {
     document.getElementById('message_button').classList.add('disable')
   } else if (message.value?.length) {
     document.getElementById('message_button').classList.remove('disable')
+  } else {
+    document.getElementById('message_button').classList.add('disable')
   }
 }
 
@@ -639,6 +834,15 @@ const handleContinue = () => {
   socket.emit('restart', { gameId: gameData.id })
 }
 
+const handleGameMode = (event) => {
+  document.getElementById('options').innerHTML = ''
+  document
+    .querySelectorAll('.game_mode')
+    .forEach((item) => item.classList.remove('selected'))
+  event.target.classList.add('selected')
+  handleSettings()
+}
+
 const handleRandomColor = () => {
   let color = generateColor()
   let [red, green, blue] = color.match(/\d+/g).map(Number)
@@ -650,6 +854,86 @@ const handleRandomColor = () => {
   document.getElementById('blue_slider_value').innerText = blue
   document.getElementById('blue_slider').value = blue
   debouncedEmitColor(color)
+}
+
+const predictPlayerMovement = (movement, gameId) => {
+  if (!gameData || !gameData.players || !gameData.players[socket.id]) return
+
+  const player = gameData.players[socket.id]
+
+  if (!clientSidePrediction[gameId]) {
+    clientSidePrediction[gameId] = {
+      inputBuffer: [], // Store the client's inputs
+      reconcileThreshold: 10 // maximum difference to reconcile (adjust this value)
+    }
+  }
+  let prediction = clientSidePrediction[gameId]
+
+  const { a, b } = gameData.players?.[socket.id].side
+  const playerSpeed = 0.01 * (gameData.settings.playerSpeed / 5) // Match with server speed
+
+  let predictedX = player.x
+  let predictedY = player.y
+  let predictedT = player.t
+
+  if (movement && movement.right) {
+    predictedT = Math.max(player.goal.startT, player.t - playerSpeed)
+  }
+  if (movement && movement.left) {
+    predictedT = Math.min(player.goal.endT, player.t + playerSpeed)
+  }
+
+  predictedX = a.x + (b.x - a.x) * predictedT
+  predictedY = a.y + (b.y - a.y) * predictedT
+
+  player.x = predictedX
+  player.y = predictedY
+  player.t = predictedT
+
+  // Store the input with a timestamp
+  prediction.inputBuffer.push({
+    input: movement,
+    timestamp: Date.now()
+  })
+}
+
+socket.on('server_update', (data) => {
+  if (!gameData || gameData.id !== data.gameId) return
+  if (!gameData.players[socket.id]) return
+
+  const player = gameData.players[socket.id]
+  if (!clientSidePrediction[data.gameId]) return
+
+  let prediction = clientSidePrediction[data.gameId]
+  let inputBuffer = prediction.inputBuffer
+
+  // Server Reconciliation
+  let serverPos = { x: data.x, y: data.y }
+  let clientPos = { x: player.x, y: player.y }
+
+  // Calculate the difference between server and client positions
+  let dx = serverPos.x - clientPos.x
+  let dy = serverPos.y - clientPos.y
+  let distance = Math.sqrt(dx * dx + dy * dy)
+
+  // If the client is too far from the server, reconcile
+  if (distance > prediction.reconcileThreshold) {
+    // Set the client's position to the server's position
+    player.x = data.x
+    player.y = data.y
+    player.t = player.side.a.x + (player.side.b.x - player.side.a.x) * data.x //this line will throw an error
+    // Clear the input buffer
+    inputBuffer = []
+    prediction.inputBuffer = []
+  }
+
+  // Always reconcile, but gradually
+  player.x = data.x * 0.25 + player.x * 0.75
+  player.y = data.y * 0.25 + player.y * 0.75
+})
+
+const test = () => {
+  socket.emit('test')
 }
 
 document
@@ -686,14 +970,21 @@ document.getElementById('blue_slider_value').innerText = examplePlayer.color
 document
   .querySelectorAll('.example_color')
   .forEach((item) => item.addEventListener('click', handleTheme))
-document.getElementById('message_input').addEventListener('keydown', handleChat)
+document.getElementById('message_input').addEventListener('input', handleChat)
 document.getElementById('message_button').addEventListener('click', handleChat)
 document.getElementById('handle_chat').addEventListener('click', handleChat)
 document.getElementById('handle_theme').addEventListener('click', handleTheme)
+document.getElementById('test').addEventListener('click', test)
 document.getElementById('cancel_button').addEventListener('click', handleCancel)
 document.getElementById('leave_button').addEventListener('click', handleCancel)
 document.getElementById('create').addEventListener('click', handleCreate)
 document.getElementById('join').addEventListener('click', handleJoin)
+document
+  .getElementById('button_points')
+  .addEventListener('click', handleGameMode)
+document
+  .getElementById('button_health')
+  .addEventListener('click', handleGameMode)
 document
   .getElementById('continue_button')
   .addEventListener('click', handleContinue)

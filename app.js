@@ -1,3 +1,4 @@
+// BACKEND CODE
 import express from 'express'
 import fetch from 'node-fetch'
 import http from 'http'
@@ -12,19 +13,93 @@ dotenv.config()
 const port = 3000
 
 let games = {}
-let timers = {}
+let aberrations = [
+  // {
+  //   name: 'PULSO',
+  //   votes: {},
+  //   duration: 30 * 1000,
+  //   addEffect: (gameId) => {},
+  //   removeEffect: (gameId) => {}
+  // },
+  // {
+  //   name: 'ECO',
+  //   votes: {},
+  //   duration: 30 * 1000,
+  //   addEffect: (gameId) => {},
+  //   removeEffect: (gameId) => {}
+  // },
+  // {
+  //   name: 'TURBO',
+  //   votes: {},
+  //   duration: 30 * 1000,
+  //   addEffect: (gameId) => {},
+  //   removeEffect: (gameId) => {}
+  // },
+  {
+    name: 'REDUCCION',
+    votes: {},
+    duration: 30 * 1000,
+    addEffect: (gameId) => {
+      games[gameId].ball.radius = ballData.radius / 2
+      games[gameId].ballData.radius = ballData.radius / 2
+    },
+    removeEffect: (gameId) => {
+      games[gameId].ball.radius = ballData.radius
+      games[gameId].ballData.radius = ballData.radius
+    }
+  }
+  // {
+  //   name: 'CAOS',
+  //   votes: {},
+  //   duration: 30 * 1000,
+  //   addEffect: (gameId) => {},
+  //   removeEffect: (gameId) => {}
+  // },
+  // {
+  //   name: 'DISRUPCIÓN',
+  //   votes: {},
+  //   duration: 30 * 1000,
+  //   addEffect: (gameId) => {},
+  //   removeEffect: (gameId) => {}
+  // },
+  // {
+  //   name: 'MUTACIÓN',
+  //   votes: {},
+  //   duration: 30 * 1000,
+  //   addEffect: (gameId) => {},
+  //   removeEffect: (gameId) => {}
+  // },
+  // {
+  //   name: 'INERCIA',
+  //   votes: {},
+  //   duration: 30 * 1000,
+  //   addEffect: (gameId) => {},
+  //   removeEffect: (gameId) => {}
+  // },
+  // {
+  //   name: 'GIRO',
+  //   votes: {},
+  //   duration: 30 * 1000,
+  //   addEffect: (gameId) => {},
+  //   removeEffect: (gameId) => {}
+  // }
+]
+let timersIntervals = {}
+let gameLoopsIntervals = {}
+let aberrationsIntervals = {}
 let area = {
   x: 400,
   y: 300,
   radius: 300
 }
 let playerData = {
-  speed: 0.01,
+  speed: 0.005,
   radius: 35
 }
 let ballData = {
   speed: 3,
   randomness: 0.01,
+  speedToAdd: 0.03,
   radius: 10
 }
 let twitchClients = new Map()
@@ -124,7 +199,7 @@ const generateId = () => {
 const generatePlayer = (data) => {
   return {
     name: data.name,
-    radius: playerData.radius,
+    radius: data.game.playerData.radius,
     color: data.color ? data.color : generateColor()
   }
 }
@@ -142,41 +217,42 @@ io.on('connection', (socket) => {
     let { players, playerCount } = game
     //? enodrac -
     // let auxPlayers = [...Array(1)]
-    // auxPlayers.forEach((item) => {
+    // auxPlayers.forEach((item, index) => {
     //   game.playerCount++
-    //   players[generateId()] = {
+    //   let auxId = generateId()
+    //   players[auxId] = {
+    //     id: auxId,
     //     name: generateId(),
     //     radius: playerData.radius,
     //     color: generateColor()
+    //     // leave: !index ? true : false
     //   }
     // })
     // game.players = players
     // playerCount = game.playerCount
     //? enodrac -
-    playerCount = playerCount === 1 || playerCount === 2 ? 4 : playerCount
-    let polygon = generatePolygon(playerCount)
+    let poligonSides = playerCount === 1 || playerCount === 2 ? 4 : playerCount
+    let polygon = generatePolygon(poligonSides)
     game.area = area
     game.polygon = polygon
-    game.playerCount = playerCount
     resetPlayers(game)
     let ball = {
-      radius: ballData.radius,
-      bounces: 0,
-      speedToAdd: 0.05
+      radius: game.ballData.radius,
+      bounces: 0
     }
     game.ball = ball
     ballAimRandomPlayer(game)
-    let interval = setInterval(() => {
+    let timerInterval = setInterval(() => {
       if (game.settings.time <= 0) {
         let maxScore = -Infinity
         let topPlayers = []
-        for (const playerId in players) {
-          const player = players[playerId]
-          if (player.score > maxScore) {
-            maxScore = player.score
-            topPlayers = [playerId]
-          } else if (player.score === maxScore) {
-            topPlayers.push(playerId)
+        for (let id in game.score) {
+          let score = game.score[id]
+          if (score > maxScore) {
+            maxScore = score
+            topPlayers = [id]
+          } else if (score === maxScore) {
+            topPlayers.push(id)
           }
         }
         if (topPlayers.length > 1) {
@@ -184,88 +260,189 @@ io.on('connection', (socket) => {
           game.tie = true
         } else {
           game.winner = topPlayers[0]
-          clearInterval(interval)
+          handleWinner(game)
         }
       }
       if (!game.countdownTimer) {
         game.settings.time = game.settings.time + (game.tie ? 1 : -1)
       }
     }, 1000)
-    timers[game.id] = interval
+    timersIntervals[game.id] = timerInterval
+    io.to(game.id).emit('start')
+    let gameLoopInterval = setInterval(() => gameLoop(game.id), 1000 / 90)
+    gameLoopsIntervals[game.id] = gameLoopInterval
+    let aberrationsInterval = setInterval(() => {
+      setAberrations(game)
+    }, 60000)
+    setTimeout(() => {
+      setAberrations(game)
+    }, 8000)
+    aberrationsIntervals[game.id] = aberrationsInterval
+    resetBall(game)
   })
 
   socket.on('join', (data) => {
-    let game
-    if (data.id) {
-      game = games[data.id]
-    } else {
-      if (!Object.keys(games).length) {
-        games[generateId()] = {
-          players: {},
-          playerCount: 0
-        }
+    let game = games[data.id]
+    if (game) {
+      game.players[socket.id] = {
+        ...generatePlayer({ ...data, game }),
+        id: socket.id
       }
-      for (let id in games) {
-        if (!game) {
-          game = games[id]
-        } else if (games[id].playerCount > game.playerCount) {
-          game = games[id]
-        }
-      }
+      game.playerCount++
+      game.activePlayerCount++
+      game.messages.push({
+        id: socket.id,
+        player: game.players[socket.id],
+        message: 'Se unio a la sala',
+        time: new Date()
+      })
+      socket.join(game.id)
+      io.emit('lobies', games)
+      io.to(game.id).emit('loby', game)
+      io.to(socket.id).emit('create', game)
     }
-    game.players[socket.id] = {
-      ...generatePlayer(data),
-      id: socket.id
-    }
-    game.playerCount++
   })
 
   socket.on('disconnect', () => {
-    handleCancel({ player: { id: socket.id } })
-  })
-
-  socket.on('cancel', () => {
-    handleCancel({ player: { id: socket.id } })
-  })
-
-  socket.on('message', (data) => {
-    games[data.id].messages.unshift({
-      player: data.player,
-      message: data.message
+    handleCancel({
+      game: Object.values(games).find((game) => game.players[socket.id])?.id,
+      player: socket.id
     })
+  })
+
+  socket.on('test', (data) => {})
+
+  socket.on('cancel', (data) => {
+    socket.leave(data.game)
+    handleCancel({ ...data, player: socket.id })
+  })
+
+  socket.on('messages', (data) => {
+    games[data.id].messages.push({
+      id: data.player,
+      player: games[data.id].players[data.player],
+      message: data.message,
+      time: new Date()
+    })
+    io.to(data.id).emit('messages', games[data.id])
   })
 
   socket.on('create', (data) => {
     let gameId = generateId()
-    games[gameId] = {
+    let game = {
       id: gameId,
       owner: socket.id,
+      playerData: JSON.parse(JSON.stringify(playerData)),
+      ballData: JSON.parse(JSON.stringify(ballData)),
       name: `Sala de: ${data.name}`,
       score: {},
-      players: {
-        [socket.id]: {
-          ...generatePlayer(data),
-          id: socket.id
-        }
-      },
       playerCount: 1,
+      activePlayerCount: 1,
       messages: []
     }
+    game.players = {
+      [socket.id]: {
+        ...generatePlayer({ ...data, game }),
+        id: socket.id
+      }
+    }
+    games[gameId] = game
+    socket.join(gameId)
+    io.emit('lobies', games)
+    io.to(gameId).emit('create', games[gameId])
   })
 
   socket.on('color', (data) => {
     games[data.id].players[data.player].color = data.color
+    io.to(data.id).emit('loby', games[data.id])
   })
 
   socket.on('player', (data) => {
+    if (!games[data.gameId]) {
+      return
+    }
     let player = games[data.gameId].players[socket.id]
     player.movement = data.movement
+    // Update server-side player position based on movement
+    updatePlayerPosition(games[data.gameId], socket.id, data.movement)
+
+    // Send the *authoritative* player state back to the client
+    io.to(data.gameId).emit('server_update', {
+      timestamp: Date.now(),
+      x: player.x,
+      y: player.y,
+      vx: player.vx, // Include velocity for smoother correction
+      vy: player.vy,
+      gameId: data.gameId
+    })
   })
 
   socket.on('restart', (data) => {
     handleRestartGame(games[data.gameId])
   })
+
+  socket.on('aberrations', (data) => {
+    for (let name in games[data.game].aberrations) {
+      let aberration = games[data.game].aberrations[name]
+      if (aberration.votes[socket.id]) {
+        delete aberration.votes[socket.id]
+      } else if (data.choise.name === name) {
+        aberration.votes[socket.id] = true
+      }
+    }
+    io.to(data.game).emit('aberrations', games[data.game].aberrations)
+  })
 })
+
+const setAberrations = (game) => {
+  const choises = getRandomAberrations(3)
+  game.aberrations = choises
+  io.to(game.id).emit('aberrations', { choises })
+  setTimeout(() => {
+    let maxVotes = -Infinity
+    let topAberrations = []
+    for (let name in game.aberrations) {
+      let votes = Object.keys(game.aberrations[name].votes).length
+      if (votes > maxVotes) {
+        maxVotes = votes
+        topAberrations = [name]
+      } else if (votes === maxVotes) {
+        topAberrations.push(name)
+      }
+    }
+    let selected
+    if (topAberrations.length > 1) {
+      selected =
+        topAberrations[Math.floor(Math.random() * topAberrations.length)]
+    } else {
+      selected = topAberrations[0]
+    }
+    let aberration = game.aberrations[selected]
+    if (aberration) {
+      aberration.selected = true
+      aberration.addEffect(game.id)
+      io.to(game.id).emit('aberrations', { aberration })
+      setTimeout(() => {
+        aberration.removeEffect(game.id)
+        io.to(game.id).emit('aberrations')
+      }, 30000)
+    }
+  }, 10000)
+}
+
+const getRandomAberrations = (count) => {
+  let availableAlterations = [...aberrations]
+  let choises = {}
+  while (
+    Object.keys(choises).length < count &&
+    availableAlterations.length > 0
+  ) {
+    let randomIndex = Math.floor(Math.random() * availableAlterations.length)
+    let aberration = availableAlterations.splice(randomIndex, 1)[0]
+    choises[aberration.name] = aberration
+  }
+  return choises
+}
 
 const ballAimRandomPlayer = (data) => {
   let randomId = Object.keys(data.players)[
@@ -284,37 +461,77 @@ const ballAimRandomPlayer = (data) => {
   let dy = midpoint.y - data.ball.y
   let length = Math.sqrt(dx * dx + dy * dy)
   data.ball.vx =
-    (dx / length) * (ballData.speed * (data.settings.ballSpeed / 5))
+    (dx / length) * (data.ballData.speed * (data.settings.ballSpeed / 5))
   data.ball.vy =
-    (dy / length) * (ballData.speed * (data.settings.ballSpeed / 5))
+    (dy / length) * (data.ballData.speed * (data.settings.ballSpeed / 5))
 }
 
 const handleRestartGame = (data) => {
+  let players
+  let playerCount = 0
+  for (let id in data.players) {
+    if (!data.players[id].leave) {
+      players[id]
+      playerCount++
+    }
+  }
   games[data.id] = {
     id: data.id,
-    players: data.players,
+    players: players,
     settings: data.settings,
     owner: data.owner,
     name: data.name,
-    playerCount: data.playerCount,
+    playerCount: playerCount,
+    activePlayerCount: playerCount,
     messages: data.messages,
     score: {}
   }
+  io.to(data.id).emit('restart', games[data.id])
 }
 
 const handleCancel = (data) => {
-  for (let id in games) {
-    if (games[id].players[data.player.id]) {
-      delete games[id].players[data.player.id]
-      games[id].playerCount--
+  let game = games[data.game]
+  if (game) {
+    let player = game.players[data.player]
+    io.to(data.player).emit('cancel')
+    if (!game.polygon) {
+      delete game.players[player.id]
+      delete game.score[player.id]
+      game.playerCount--
+    } else {
+      player.leave = true
     }
-    if (!games[id].playerCount || games[id].owner === data.player.id) {
-      const client = twitchClients.get(id)
+    game.activePlayerCount--
+    if (game.owner === player.id) {
+      const client = twitchClients.get(game.id)
       if (client) {
         client.disconnect()
-        twitchClients.delete(id)
+        twitchClients.delete(game.id)
       }
-      delete games[id]
+    }
+    if (!game.playerCount || !game.activePlayerCount) {
+      clearInterval(timersIntervals[game.id])
+      clearInterval(gameLoopsIntervals[game.id])
+      clearInterval(aberrationsIntervals[game.id])
+      delete games[game.id]
+      io.emit('lobies', games)
+      io.to(game.id).emit('cancel')
+      return
+    }
+    game.messages.push({
+      id: player.id,
+      player,
+      message: 'Abandono la sala',
+      time: new Date()
+    })
+    if (game.owner === player.id) {
+      let owner = Object.values(game.players)[0]
+      game.owner = owner.id
+      game.name = `Sala de: ${owner.name}`
+    }
+    if (game.playerCount === 1 || game.activePlayerCount === 1) {
+      game.winner = Object.keys(game.players)[0]
+      handleWinner(game)
     }
   }
 }
@@ -405,202 +622,227 @@ const bounceAnimation = (data) => {
   }
 }
 
-setInterval(() => {
-  for (let gameId in games) {
-    let game = games[gameId]
-    let { players, ball, polygon } = game
-    if (ball && !game.countdownTimer && !game.winner) {
-      if (ball.bounces > 500) {
-        resetBall(game)
-        resetPlayers(game)
+const handleGoal = (data) => {
+  io.emit('goalScored', {
+    x: data.ball.x,
+    y: data.ball.y,
+    color: data.players[data.player].color
+  })
+}
+
+const updatePlayerPosition = (game, playerId, movement) => {
+  const player = game.players[playerId]
+  if (!player.side || !player.goal) return
+
+  const { a, b } = player.side
+  const playerSpeed = game.playerData.speed * (game.settings.playerSpeed / 5) // Use game settings
+
+  if (!player.vx) player.vx = 0
+  if (!player.vy) player.vy = 0
+
+  if (movement && movement.right) {
+    player.t = Math.max(player.goal.startT, player.t - playerSpeed)
+  }
+  if (movement && movement.left) {
+    player.t = Math.min(player.goal.endT, player.t + playerSpeed)
+  }
+
+  // Calculate the new position based on 't'
+  player.x = a.x + (b.x - a.x) * player.t
+  player.y = a.y + (b.y - a.y) * player.t
+
+  // Basic velocity calculation
+  player.vx = (player.x - (player.lastX || player.x)) / (1000 / 90) // rough delta time
+  player.vy = (player.y - (player.lastY || player.y)) / (1000 / 90) // rough delta time
+
+  player.lastX = player.x
+  player.lastY = player.y
+}
+
+const handleWinner = (game) => {
+  clearInterval(timersIntervals[game.id])
+  clearInterval(gameLoopsIntervals[game.id])
+  clearInterval(aberrationsIntervals[game.id])
+  io.to(game.id).emit('victory', game)
+}
+
+const gameLoop = (gameId) => {
+  let game = games[gameId]
+  let { players, ball, polygon } = game
+  if (ball && !game.countdownTimer) {
+    if (ball.bounces > 500) {
+      resetBall(game)
+      resetPlayers(game)
+    }
+
+    if (ball.bounceRemaining > 0) {
+      ball.radius =
+        game.ballData.radius * 1 +
+        (ball.bounceExpansion - 1) * ball.bounceRemaining
+      ball.bounceRemaining -= ball.bounceReduction
+      if (ball.bounceRemaining < 0) {
+        ball.bounceRemaining = 0
+        ball.radius = game.ballData.radius
       }
+    }
 
-      if (ball.bounceRemaining > 0) {
-        ball.radius =
-          ballData.radius * 1 +
-          (ball.bounceExpansion - 1) * ball.bounceRemaining
-        ball.bounceRemaining -= ball.bounceReduction
-        if (ball.bounceRemaining < 0) {
-          ball.bounceRemaining = 0
-          ball.radius = ballData.radius
-        }
-      }
+    let steps = Math.ceil(
+      Math.max(Math.abs(ball.vx), Math.abs(ball.vy)) / ball.radius
+    )
 
-      if (game.polygon) {
-        for (let id in players) {
-          let player = players[id]
-          if (!player.side || !player.goal) continue
-          let { a, b } = player.side
-          if (player.movement && player.movement.right) {
-            player.t = Math.max(
-              player.goal.startT,
-              player.t - playerData.speed * (game.settings.playerSpeed / 5)
-            )
-          }
-          if (player.movement && player.movement.left) {
-            player.t = Math.min(
-              player.goal.endT,
-              player.t + playerData.speed * (game.settings.playerSpeed / 5)
-            )
-          }
-          player.x = a.x + (b.x - a.x) * player.t
-          player.y = a.y + (b.y - a.y) * player.t
-        }
-      }
+    for (let i = 0; i < steps; i++) {
+      ball.x += ball.vx / steps
+      ball.y += ball.vy / steps
 
-      let steps = Math.ceil(
-        Math.max(Math.abs(ball.vx), Math.abs(ball.vy)) / ball.radius
-      )
+      let minWallDist = ball.radius
+      let minPlayerDist = ball.radius + game.playerData.radius
 
-      for (let i = 0; i < steps; i++) {
-        ball.x += ball.vx / steps
-        ball.y += ball.vy / steps
+      // === Check for goal ===
+      for (let id in players) {
+        let player = players[id]
+        if (!player.side || !player.goal) continue
+        let { a, b } = player.side
+        let { startT, endT } = player.goal
 
-        let minWallDist = ball.radius
-        let minPlayerDist = ball.radius + playerData.radius
+        let gx1 = a.x + (b.x - a.x) * startT
+        let gy1 = a.y + (b.y - a.y) * startT
+        let gx2 = a.x + (b.x - a.x) * endT
+        let gy2 = a.y + (b.y - a.y) * endT
 
-        // === Check for goal ===
-        for (let id in players) {
-          let player = players[id]
-          if (!player.side || !player.goal) continue
-          let { a, b } = player.side
-          let { startT, endT } = player.goal
+        let dx = gx2 - gx1
+        let dy = gy2 - gy1
+        let lengthSq = dx * dx + dy * dy
+        let t = Math.max(
+          0,
+          Math.min(1, ((ball.x - gx1) * dx + (ball.y - gy1) * dy) / lengthSq)
+        )
+        let closestX = gx1 + t * dx
+        let closestY = gy1 + t * dy
 
-          let gx1 = a.x + (b.x - a.x) * startT
-          let gy1 = a.y + (b.y - a.y) * startT
-          let gx2 = a.x + (b.x - a.x) * endT
-          let gy2 = a.y + (b.y - a.y) * endT
+        let distX = ball.x - closestX
+        let distY = ball.y - closestY
+        let distSq = distX * distX + distY * distY
 
-          let dx = gx2 - gx1
-          let dy = gy2 - gy1
-          let lengthSq = dx * dx + dy * dy
-          let t = Math.max(
-            0,
-            Math.min(1, ((ball.x - gx1) * dx + (ball.y - gy1) * dy) / lengthSq)
-          )
-          let closestX = gx1 + t * dx
-          let closestY = gy1 + t * dy
+        let pdx = ball.x - player.x
+        let pdy = ball.y - player.y
+        let playerDistSq = pdx * pdx + pdy * pdy
 
-          let distX = ball.x - closestX
-          let distY = ball.y - closestY
-          let distSq = distX * distX + distY * distY
-
-          let pdx = ball.x - player.x
-          let pdy = ball.y - player.y
-          let playerDistSq = pdx * pdx + pdy * pdy
-
-          if (
-            distSq <= ball.radius * ball.radius &&
-            playerDistSq > (ball.radius + playerData.radius) ** 2
-          ) {
-            let lastPlayerId = ball.player || id
-            game.score[lastPlayerId] += lastPlayerId === id ? -1 : 1
-            // win conditions
-            if (game.score[lastPlayerId] >= game.settings.goal || game.tie) {
-              game.winner = lastPlayerId
-              clearInterval(timers[game.id])
-              break
-            }
-            resetBall(game)
-            resetPlayers(game)
+        if (
+          distSq <= ball.radius * ball.radius &&
+          playerDistSq > (ball.radius + game.playerData.radius) ** 2
+        ) {
+          // goal
+          let lastPlayerId = ball.player || id
+          handleGoal({ ...game, player: lastPlayerId })
+          game.score[lastPlayerId] += lastPlayerId === id ? -1 : 1
+          // win conditions
+          if (game.score[lastPlayerId] >= game.settings.goal || game.tie) {
+            game.winner = lastPlayerId
+            handleWinner(game)
             break
           }
+          resetBall(game)
+          resetPlayers(game)
+          break
+        }
 
-          player = players[id]
-          dx = ball.x - player.x
-          dy = ball.y - player.y
-          distSq = dx * dx + dy * dy
+        player = players[id]
+        dx = ball.x - player.x
+        dy = ball.y - player.y
+        distSq = dx * dx + dy * dy
 
-          if (player.bounceRemaining > 0) {
-            player.radius =
-              playerData.radius * 1 +
-              (player.bounceExpansion - 1) * player.bounceRemaining
-            player.bounceRemaining -= player.bounceReduction
-            if (player.bounceRemaining < 0) {
-              player.bounceRemaining = 0
-              player.radius = playerData.radius
-            }
-          }
-
-          if (distSq < minPlayerDist * minPlayerDist) {
-            bounceAnimation({ player, ball })
-
-            let dist = Math.sqrt(distSq) || 0.01
-            let nx = dx / dist
-            let ny = dy / dist
-
-            let dot = ball.vx * nx + ball.vy * ny
-            if (dot < 0) {
-              let { vx, vy } = reflectVelocity(ball.vx, ball.vy, nx, ny)
-
-              let angle = Math.atan2(vy, vx)
-              let offset = (Math.random() - 0.5) * ballData.randomness
-              let speed = Math.sqrt(vx * vx + vy * vy)
-              ball.vx =
-                Math.cos(angle + offset) *
-                (speed + ball.bounces * ball.speedToAdd)
-              ball.vy =
-                Math.sin(angle + offset) *
-                (speed + ball.bounces * ball.speedToAdd)
-              ball.bounces += 1
-            }
-
-            let overlap = minPlayerDist - dist
-            ball.x += nx * overlap
-            ball.y += ny * overlap
+        if (player.bounceRemaining > 0) {
+          player.radius =
+            game.playerData.radius * 1 +
+            (player.bounceExpansion - 1) * player.bounceRemaining
+          player.bounceRemaining -= player.bounceReduction
+          if (player.bounceRemaining < 0) {
+            player.bounceRemaining = 0
+            player.radius = game.playerData.radius
           }
         }
 
-        // === Bounce on polygon walls ===
-        for (let i = 0; i < polygon.length; i++) {
-          let a = polygon[i]
-          let b = polygon[(i + 1) % polygon.length]
+        if (distSq < minPlayerDist * minPlayerDist) {
+          bounceAnimation({ player, ball })
 
-          let dx = b.x - a.x
-          let dy = b.y - a.y
-          let lengthSq = dx * dx + dy * dy
+          let dist = Math.sqrt(distSq) || 0.01
+          let nx = dx / dist
+          let ny = dy / dist
 
-          let t = Math.max(
-            0,
-            Math.min(1, ((ball.x - a.x) * dx + (ball.y - a.y) * dy) / lengthSq)
-          )
-          let closestX = a.x + t * dx
-          let closestY = a.y + t * dy
+          let dot = ball.vx * nx + ball.vy * ny
+          if (dot < 0) {
+            let { vx, vy } = reflectVelocity(ball.vx, ball.vy, nx, ny)
 
-          let distX = ball.x - closestX
-          let distY = ball.y - closestY
-          let distSq = distX * distX + distY * distY
-
-          if (distSq < minWallDist * minWallDist) {
-            bounceAnimation({ ball })
-            let { x: normalX, y: normalY } = normalize(-dy, dx)
-            let { vx, vy } = reflectVelocity(ball.vx, ball.vy, normalX, normalY)
-            ball.vx = vx
-            ball.vy = vy
-
-            let overlap = minWallDist - Math.sqrt(distSq)
-            ball.x += normalX * overlap
-            ball.y += normalY * overlap
-
-            let angle = Math.atan2(ball.vy, ball.vx)
-            let offset = (Math.random() - 0.5) * ballData.randomness
-            let speed = Math.sqrt(ball.vx * ball.vx + ball.vy * ball.vy)
+            let angle = Math.atan2(vy, vx)
+            let offset = (Math.random() - 0.5) * game.ballData.randomness
+            let speed = Math.sqrt(vx * vx + vy * vy)
             ball.vx =
               Math.cos(angle + offset) *
-              (speed + ball.bounces * ball.speedToAdd)
+              (speed + ball.bounces * game.ballData.speedToAdd)
             ball.vy =
               Math.sin(angle + offset) *
-              (speed + ball.bounces * ball.speedToAdd)
+              (speed + ball.bounces * game.ballData.speedToAdd)
             ball.bounces += 1
           }
+
+          let overlap = minPlayerDist - dist
+          ball.x += nx * overlap
+          ball.y += ny * overlap
+        }
+      }
+
+      // === Bounce on polygon walls ===
+      for (let i = 0; i < polygon.length; i++) {
+        let a = polygon[i]
+        let b = polygon[(i + 1) % polygon.length]
+
+        let dx = b.x - a.x
+        let dy = b.y - a.y
+        let lengthSq = dx * dx + dy * dy
+
+        let t = Math.max(
+          0,
+          Math.min(1, ((ball.x - a.x) * dx + (ball.y - a.y) * dy) / lengthSq)
+        )
+        let closestX = a.x + t * dx
+        let closestY = a.y + t * dy
+
+        let distX = ball.x - closestX
+        let distY = ball.y - closestY
+        let distSq = distX * distX + distY * distY
+
+        if (distSq < minWallDist * minWallDist) {
+          bounceAnimation({ ball })
+          let { x: normalX, y: normalY } = normalize(-dy, dx)
+          let { vx, vy } = reflectVelocity(ball.vx, ball.vy, normalX, normalY)
+          ball.vx = vx
+          ball.vy = vy
+
+          let overlap = minWallDist - Math.sqrt(distSq)
+          ball.x += normalX * overlap
+          ball.y += normalY * overlap
+
+          let angle = Math.atan2(ball.vy, ball.vx)
+          let offset = (Math.random() - 0.5) * game.ballData.randomness
+          let speed = Math.sqrt(ball.vx * ball.vx + ball.vy * ball.vy)
+          ball.vx =
+            Math.cos(angle + offset) *
+            (speed + ball.bounces * game.ballData.speedToAdd)
+          ball.vy =
+            Math.sin(angle + offset) *
+            (speed + ball.bounces * game.ballData.speedToAdd)
+          ball.bounces += 1
         }
       }
     }
   }
-  // === Emit updated game state ===
-  io.emit('games', games)
-}, 1000 / 90)
+  io.to(gameId).emit('game', game)
+}
+
+setInterval(() => {
+  io.emit('lobies', games)
+}, 1000)
 
 server.listen(port, () => {
-  console.log(`Enodrac - port`, port)
+  console.log(`port ${port}`)
 })

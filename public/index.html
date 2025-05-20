@@ -7,6 +7,7 @@
     />
   </head>
   <body>
+    <div id="aberrations" class="aberrations"></div>
     <div id="themes" class="themes hidden box">
       <div class="themes_list">
         <div id="handle_theme" class="handle button"></div>
@@ -16,6 +17,7 @@
         <div id="red" class="theme-red example_color"></div>
       </div>
     </div>
+    <div id="test" class="test">TEST</div>
     <div id="middle" class="middle box">
       <div id="player_customization" class="player_customization">
         <canvas id="player_example" class="player_example"></canvas>
@@ -72,7 +74,7 @@
         <div id="players" class="players"></div>
         <div class="buttons">
           <div id="start_button" class="start button">Empezar</div>
-          <div id="cancel_button" class="cancel button">Cancelar</div>
+          <div id="cancel_button" class="cancel button">Salir</div>
         </div>
         <div id="connect_twitch" class="connect_twitch button">
           Conectar a twitch
@@ -80,7 +82,12 @@
       </div>
       <div id="game_customization" class="game_customization">
         <div class="title">Opciones</div>
-        <!-- <div id="handle_customization" class="handle button"></div> -->
+        <div class="game_modes">
+          <div id="button_points" class="game_mode button selector selected">
+            Puntos
+          </div>
+          <div id="button_health" class="game_mode button selector">Vida</div>
+        </div>
         <div id="options" class="options"></div>
       </div>
     </div>

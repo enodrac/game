@@ -90,6 +90,13 @@ body {
   &:hover {
     transform: scale(1.05);
   }
+  &.selector {
+    height: 32px;
+    box-sizing: border-box;
+    background-color: var(--background);
+    color: var(--primary);
+    border: 2px solid var(--primary);
+  }
 }
 
 .mini_player {
@@ -226,6 +233,24 @@ body {
   }
 }
 
+.aberrations {
+  display: flex;
+  align-items: center;
+  position: absolute;
+  top: 56px;
+  left: 50%;
+  translate: -50% 0;
+  transition: all 0.5s;
+  .aberration {
+    margin: 0 16px;
+    cursor: pointer;
+    padding: 16px 32px;
+    &.selected {
+      box-shadow: 0 0px 20px -10px white;
+    }
+  }
+}
+
 .middle {
   display: flex;
   align-items: center;
@@ -359,6 +384,7 @@ body {
       margin-top: 16px;
 
       .start {
+        display: none;
         margin-right: 16px;
       }
     }
@@ -383,6 +409,17 @@ body {
     .title {
       margin-bottom: 16px;
     }
+    .game_modes {
+      display: flex;
+      margin-bottom: 16px;
+      .button {
+        margin: 0 8px;
+        &.selected {
+          background-color: var(--primary);
+          color: var(--background);
+        }
+      }
+    }
     .option {
       display: flex;
       align-items: center;
@@ -390,7 +427,7 @@ body {
       width: 100%;
       .label {
         margin-right: auto;
-        width: 100px;
+        width: 130px;
       }
       .arrow {
         cursor: pointer;
@@ -426,9 +463,15 @@ body {
     color: #292929;
     margin-bottom: 16px;
     .selected {
-      /* background-color: #ddd; */
+      box-shadow: 0 0px 20px -10px white;
     }
   }
+}
+
+.test {
+  position: absolute;
+  top: 16px;
+  left: 16px;
 }
 
 .arrow {
@@ -438,13 +481,13 @@ body {
   }
   &.left {
     border-left: 0px solid transparent;
-    border-right: 10px solid white;
+    border-right: 10px solid var(--primary);
     border-top: 5px solid transparent;
     border-bottom: 5px solid transparent;
   }
   &.right {
     border-right: 0px solid transparent;
-    border-left: 10px solid white;
+    border-left: 10px solid var(--primary);
     border-top: 5px solid transparent;
     border-bottom: 5px solid transparent;
   }
@@ -508,6 +551,9 @@ body {
         text-shadow: 0px 0px 1px #ffffff54;
         .player {
           font-weight: 700;
+          margin-right: 4px;
+        }
+        .time {
           margin-right: 4px;
         }
       }
