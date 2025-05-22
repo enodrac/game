@@ -40,12 +40,16 @@ let aberrations = [
     votes: {},
     duration: 30 * 1000,
     addEffect: (gameId) => {
-      games[gameId].ball.radius = ballData.radius / 2
-      games[gameId].ballData.radius = ballData.radius / 2
+      if (games[gameId]) {
+        games[gameId].ball.radius = ballData.radius / 2
+        games[gameId].ballData.radius = ballData.radius / 2
+      }
     },
     removeEffect: (gameId) => {
-      games[gameId].ball.radius = ballData.radius
-      games[gameId].ballData.radius = ballData.radius
+      if (games[gameId]) {
+        games[gameId].ball.radius = ballData.radius
+        games[gameId].ballData.radius = ballData.radius
+      }
     }
   }
   // {
@@ -158,8 +162,30 @@ app.get('/twitch/callback', async (req, res) => {
       if (self) {
         return
       }
-      console.log(`${tags['display-name']}: ${message}`)
-      if (message.toLowerCase().includes('speed')) {
+      let voteCommandRegex = /^!vote\s+(\w+)$/i
+      let matchName = message.match(voteCommandRegex)
+      let voteCommandRegexNumber = /^!vote\s+([1-3])$/i
+      let matchNumber = message.match(voteCommandRegexNumber)
+      let gameId = state
+      let game = games[gameId]
+      if (game && game.aberrations) {
+        let voteName
+        if (matchNumber) {
+          const voteIndex = parseInt(matchNumber[1]) - 1
+          voteName = Object.keys(game.aberrations)[voteIndex]
+        } else if (matchName) {
+          let aberration = game.aberrations[matchName[1].toUpperCase()]
+          if (aberration) {
+            voteName = aberration.name
+          }
+        }
+        if (voteName) {
+          handleVoteAberrations({
+            game: gameId,
+            choise: { name: voteName },
+            id: tags['user-id']
+          })
+        }
       }
     })
 
@@ -255,7 +281,9 @@ io.on('connection', (socket) => {
             topPlayers.push(id)
           }
         }
-        if (topPlayers.length > 1) {
+        if (game.settings.health) {
+          game.tie = true
+        } else if (topPlayers.length > 1) {
           game.settings.time = 0
           game.tie = true
         } else {
@@ -266,18 +294,20 @@ io.on('connection', (socket) => {
       if (!game.countdownTimer) {
         game.settings.time = game.settings.time + (game.tie ? 1 : -1)
       }
-    }, 1000)
+    }, 1_000)
     timersIntervals[game.id] = timerInterval
     io.to(game.id).emit('start')
     let gameLoopInterval = setInterval(() => gameLoop(game.id), 1000 / 90)
     gameLoopsIntervals[game.id] = gameLoopInterval
-    let aberrationsInterval = setInterval(() => {
-      setAberrations(game)
-    }, 60000)
-    setTimeout(() => {
-      setAberrations(game)
-    }, 8000)
-    aberrationsIntervals[game.id] = aberrationsInterval
+    if(game.settings.effects){
+      let aberrationsInterval = setInterval(() => {
+        setAberrations(game)
+      }, 60_000)
+      setTimeout(() => {
+        setAberrations(game)
+      }, 8_000)
+      aberrationsIntervals[game.id] = aberrationsInterval
+    }
     resetBall(game)
   })
 
@@ -310,7 +340,15 @@ io.on('connection', (socket) => {
     })
   })
 
-  socket.on('test', (data) => {})
+  socket.on('test', (data) => {
+    for (let name in games[data.game].aberrations) {
+      let aberration = games[data.game].aberrations[name]
+      for (let id in aberration.votes) {
+        delete aberration.votes[id]
+      }
+    }
+    io.to(data.game).emit('aberrations', games[data.game].aberrations)
+  })
 
   socket.on('cancel', (data) => {
     socket.leave(data.game)
@@ -382,17 +420,24 @@ io.on('connection', (socket) => {
   })
 
   socket.on('aberrations', (data) => {
-    for (let name in games[data.game].aberrations) {
-      let aberration = games[data.game].aberrations[name]
-      if (aberration.votes[socket.id]) {
-        delete aberration.votes[socket.id]
-      } else if (data.choise.name === name) {
-        aberration.votes[socket.id] = true
-      }
-    }
-    io.to(data.game).emit('aberrations', games[data.game].aberrations)
+    handleVoteAberrations({ ...data, id: socket.id })
   })
 })
+
+const handleVoteAberrations = (data) => {
+  for (let name in games[data.game].aberrations) {
+    let aberration = games[data.game].aberrations[name]
+    if (aberration.votes[data.id]) {
+      delete aberration.votes[data.id]
+    } else if (
+      data.choise.name?.toString()?.toLowerCase() ===
+      name?.toString()?.toLowerCase()
+    ) {
+      aberration.votes[data.id] = true
+    }
+  }
+  io.to(data.game).emit('aberrations', games[data.game].aberrations)
+}
 
 const setAberrations = (game) => {
   const choises = getRandomAberrations(3)
@@ -425,9 +470,9 @@ const setAberrations = (game) => {
       setTimeout(() => {
         aberration.removeEffect(game.id)
         io.to(game.id).emit('aberrations')
-      }, 30000)
+      }, 30_000)
     }
-  }, 10000)
+  }, 10_000)
 }
 
 const getRandomAberrations = (count) => {
@@ -467,11 +512,11 @@ const ballAimRandomPlayer = (data) => {
 }
 
 const handleRestartGame = (data) => {
-  let players
+  let players = {}
   let playerCount = 0
   for (let id in data.players) {
     if (!data.players[id].leave) {
-      players[id]
+      players[id] = data.players[id]
       playerCount++
     }
   }
@@ -579,7 +624,7 @@ const resetPlayers = (data) => {
     const b = data.polygon[(sideIndex + 1) % totalSides]
 
     if (!data.score[id]) {
-      data.score[id] = 0
+      data.score[id] = data.settings.health ? data.settings.health : 0
     }
 
     data.players[id].side = { a, b }
@@ -594,15 +639,18 @@ const resetPlayers = (data) => {
 }
 
 const resetBall = (data) => {
-  ballAimRandomPlayer(data)
-  data.ball.bounces = 0
-  data.countdownTimer = 3
-  let countdownInterval = setInterval(() => {
-    data.countdownTimer--
-    if (data.countdownTimer === 0) {
-      clearInterval(countdownInterval)
-    }
-  }, 1000)
+  let game = games[data.id]
+  if(game){
+    ballAimRandomPlayer(data)
+    game.ball.bounces = 0
+    game.countdownTimer = 3
+    let countdownInterval = setInterval(() => {
+      game.countdownTimer--
+      if (game.countdownTimer === 0) {
+        clearInterval(countdownInterval)
+      }
+    }, 1000)
+  }
 }
 
 const bounceAnimation = (data) => {
@@ -623,6 +671,41 @@ const bounceAnimation = (data) => {
 }
 
 const handleGoal = (data) => {
+  if (data.settings.health) {
+    data.score[data.player] -= data.tie
+      ? data.score[data.player]
+      : data.settings.damage
+    if (data.score[data.player] <= 0) {
+      data.score[data.player] = 0
+      data.players[data.player].dead = true
+    }
+    let survivors = []
+    let players = []
+    for (let player of Object.keys(data.score)) {
+      players.push(player)
+      if (data.score[player] > 0) {
+        survivors.push(player)
+      }
+    }
+    if (
+      (survivors.length === 1 && players.length !== 1) ||
+      (!survivors.length && players.length === 1)
+    ) {
+      data.winner = players[0]
+    }
+  } else {
+    data.score[data.player] += data.player === id ? -1 : 1
+    if (data.score[data.player] >= data.settings.goal || data.tie) {
+      data.winner = data.player
+    }
+  }
+  if (data.winner) {
+    handleWinner(data)
+  } else {
+    resetBall(data)
+    resetPlayers(data)
+  }
+  console.log(`Enodrac - dataAAAAAAAAAAAAA`, data)
   io.emit('goalScored', {
     x: data.ball.x,
     y: data.ball.y,
@@ -670,7 +753,7 @@ const gameLoop = (gameId) => {
   let game = games[gameId]
   let { players, ball, polygon } = game
   if (ball && !game.countdownTimer) {
-    if (ball.bounces > 500) {
+    if (ball.bounces > 100) {
       resetBall(game)
       resetPlayers(game)
     }
@@ -734,15 +817,15 @@ const gameLoop = (gameId) => {
           // goal
           let lastPlayerId = ball.player || id
           handleGoal({ ...game, player: lastPlayerId })
-          game.score[lastPlayerId] += lastPlayerId === id ? -1 : 1
-          // win conditions
-          if (game.score[lastPlayerId] >= game.settings.goal || game.tie) {
-            game.winner = lastPlayerId
-            handleWinner(game)
-            break
-          }
-          resetBall(game)
-          resetPlayers(game)
+          // game.score[lastPlayerId] += lastPlayerId === id ? -1 : 1
+          // // win conditions
+          // if (game.score[lastPlayerId] >= game.settings.goal || game.tie) {
+          //   game.winner = lastPlayerId
+          //   handleWinner(game)
+          //   break
+          // }
+          // resetBall(game)
+          // resetPlayers(game)
           break
         }
 

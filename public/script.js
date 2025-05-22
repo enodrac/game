@@ -7,16 +7,16 @@ let socket = io()
 
 /*
   TODO
-    - MANEJO DE PODERES
-    -- PULSO (la pelota aparece y desaparece pero sigue el mismo trajecto)
-    -- ECO (aparecen n pelotas mas)
-    -- TURBO (aumenta la velocidad de la pelota n%)
-    -- REDUCCION (reduce el tamaño de la pelota en n%)
-    -- CAOS (la pelota se mueve erraticamente)
-    -- DISRUPCIÓN (los controles de los jugadores se invierten)
-    -- MUTACIÓN (cambia el poligono de los jugadores)
-    -- INERCIA (los jugadores se deslizan como si estuvieran en hielo)
-    -- GIRO (el poligono gira lentamente para cambiar la perspectiva)
+    - opcion para deshabilitar aberraciones = efectos
+    - revisar que el tema de twitch este bien la desconeccion y la perdida del token
+    - PULSO (la pelota aparece y desaparece pero sigue el mismo trajecto)
+    - ECO (aparecen n pelotas mas)
+    - TURBO (aumenta la velocidad de la pelota n%)
+    - CAOS (la pelota se mueve erraticamente)
+    - DISRUPCIÓN (los controles de los jugadores se invierten)
+    - MUTACIÓN (cambia el poligono de los jugadores)
+    - INERCIA (los jugadores se deslizan como si estuvieran en hielo)
+    - GIRO (el poligono gira lentamente para cambiar la perspectiva)
 */
 
 // Store client-side player history
@@ -360,6 +360,11 @@ const handleSettings = () => {
       value: 5,
       min: 1,
       max: 10
+    },
+    {
+      label: `Effectos`,
+      key: 'aberrations',
+      value: true
     }
   ]
   options.forEach((item) => {
@@ -371,25 +376,40 @@ const handleSettings = () => {
     label.innerText = item.label
     let value = document.createElement('div')
     value.classList.add('value')
-    value.innerText = item.value
+    value.innerText =
+      item.key === 'aberrations' ? (item.value ? 'si' : 'no') : item.value
     let arrowLeft = document.createElement('div')
     arrowLeft.classList.add('arrow')
     arrowLeft.classList.add('left')
     arrowLeft.addEventListener('click', () => {
-      let newValue = settings[item.key] - (item.step || 1)
-      if (newValue >= item.min && newValue <= item.max) {
+      let newValue =
+        item.key === 'aberrations'
+          ? !settings[item.key]
+          : settings[item.key] - (item.step || 1)
+      if (
+        (newValue >= item.min && newValue <= item.max) ||
+        item.key === 'aberrations'
+      ) {
         settings[item.key] = newValue
-        value.innerText = newValue
+        value.innerText =
+          item.key === 'aberrations' ? (newValue ? 'si' : 'no') : newValue
       }
     })
     let arrowRight = document.createElement('div')
     arrowRight.classList.add('arrow')
     arrowRight.classList.add('right')
     arrowRight.addEventListener('click', () => {
-      let newValue = settings[item.key] + (item.step || 1)
-      if (newValue >= item.min && newValue <= item.max) {
+      let newValue =
+        item.key === 'aberrations'
+          ? !settings[item.key]
+          : settings[item.key] + (item.step || 1)
+      if (
+        (newValue >= item.min && newValue <= item.max) ||
+        item.key === 'aberrations'
+      ) {
         settings[item.key] = newValue
-        value.innerText = newValue
+        value.innerText =
+          item.key === 'aberrations' ? (newValue ? 'si' : 'no') : newValue
       }
     })
     option.appendChild(label)
@@ -933,7 +953,7 @@ socket.on('server_update', (data) => {
 })
 
 const test = () => {
-  socket.emit('test')
+  socket.emit('test', { game: gameData.id })
 }
 
 document
