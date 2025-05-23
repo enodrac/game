@@ -7,7 +7,7 @@ let socket = io()
 
 /*
   TODO
-    - opcion para deshabilitar aberraciones = efectos
+    - viendo que se puede mejorar
     - revisar que el tema de twitch este bien la desconeccion y la perdida del token
     - PULSO (la pelota aparece y desaparece pero sigue el mismo trajecto)
     - ECO (aparecen n pelotas mas)
@@ -104,10 +104,16 @@ socket.on('create', (game) => {
   handleDisplayGameInit()
 })
 
-socket.on('start', () => {
+socket.on('start', (game) => {
+  gameData = game
   document.getElementById('game_canvas').style.display = 'flex'
+  document.getElementById('arena_canvas').style.display = 'flex'
   document.getElementById('info').style.display = 'flex'
   document.getElementById('middle').style.display = 'none'
+  document.getElementById('goal').innerText = gameData.settings.damage
+    ? `Daño: ${gameData.settings.damage}`
+    : `Puntos: ${gameData.settings.goal}`
+  drawArena()
 })
 
 socket.on('cancel', () => {
@@ -120,6 +126,7 @@ socket.on('cancel', () => {
   document.getElementById('loby').style.display = 'none'
   document.getElementById('chat').style.display = 'none'
   document.getElementById('game_canvas').style.display = 'none'
+  document.getElementById('arena_canvas').style.display = 'none'
   document.getElementById('options').innerHTML = ''
 })
 
@@ -142,8 +149,30 @@ socket.on('messages', (game) => {
   }
 })
 
+socket.on('connected', () => {
+  drawCustomizablePlayer()
+})
+
 socket.on('game', (game) => {
   gameData = game
+  if (gameData && gameData.polygon) {
+    document.getElementById('time').innerText = formatTime(
+      gameData.settings.time
+    )
+    let scores = []
+    for (let id in gameData.score) {
+      scores.push(
+        `<div class="score box">
+         <div class="mini_player" style="background-color: ${gameData.players[id].color};"></div>
+        ${gameData.players[id].name}: ${gameData.score[id]}</div>`
+      )
+    }
+    document.getElementById('scores').innerHTML = scores.join('')
+  }
+})
+
+socket.on('countdownTimer', (countdownTimer) => {
+  document.getElementById('countdown_timer').innerText = countdownTimer || ''
 })
 
 socket.on('victory', (game) => {
@@ -151,34 +180,34 @@ socket.on('victory', (game) => {
   document.getElementById('victory').classList.add('show')
 })
 
-socket.on('aberrations', (data) => {
+socket.on('effects', (data) => {
   if (!data) {
-    document.getElementById('aberrations').innerHTML = ``
-  } else if (data.aberration) {
-    document.getElementById('aberrations').innerHTML = `
-      <div class="aberration box selected" style="background: var(--accent)">
-      ${data.aberration.name}
+    document.getElementById('effects').innerHTML = ``
+  } else if (data.effect) {
+    document.getElementById('effects').innerHTML = `
+      <div class="effect box selected" style="background: var(--accent)">
+      ${data.effect.name}
       </div>
     `
   } else if (data.choises) {
     for (let name in data.choises) {
       let choise = data.choises[name]
-      let aberration = document.createElement('div')
-      aberration.id = choise.name
-      aberration.classList.add('box')
-      aberration.classList.add('aberration')
-      aberration.innerText = choise.name
-      aberration.addEventListener('click', (event) => {
+      let effect = document.createElement('div')
+      effect.id = choise.name
+      effect.classList.add('box')
+      effect.classList.add('effect')
+      effect.innerText = choise.name
+      effect.addEventListener('click', (event) => {
         let selected = event.target.className.includes('selected')
         document
-          .querySelectorAll('.aberration')
+          .querySelectorAll('.effect')
           .forEach((item) => item.classList.remove('selected'))
         if (!selected) {
           document.getElementById(choise.name).classList.add('selected')
         }
-        socket.emit('aberrations', { game: gameData.id, choise })
+        socket.emit('effects', { game: gameData.id, choise })
       })
-      document.getElementById('aberrations').appendChild(aberration)
+      document.getElementById('effects').appendChild(effect)
     }
   } else {
     let totalVotes = 0
@@ -186,9 +215,9 @@ socket.on('aberrations', (data) => {
       totalVotes += Object.keys(data[name].votes).length
     }
     for (let name in data) {
-      let aberration = document.getElementById(name)
+      let effect = document.getElementById(name)
       let percentage = (Object.keys(data[name].votes).length * 100) / totalVotes
-      aberration.style.background = `linear-gradient(
+      effect.style.background = `linear-gradient(
         90deg,
         var(--accent) ${percentage}%,
         var(--background) ${percentage ? percentage + 5 : 0}%
@@ -198,10 +227,10 @@ socket.on('aberrations', (data) => {
 })
 
 const handleDisplayGameInit = () => {
+  drawCustomizablePlayer()
   document.getElementById('options').innerHTML = ''
   document.getElementById('victory').classList.remove('show')
   document.getElementById('middle').style.display = 'flex'
-  document.getElementById('player_customization').style.display = 'flex'
   document.getElementById('loby').style.display = 'flex'
   document.getElementById('chat').style.display = 'flex'
   document.getElementById('loby_label').innerText = gameData.name
@@ -217,6 +246,7 @@ const handleDisplayGameInit = () => {
   document.getElementById('init').style.display = 'none'
   document.getElementById('lobies').style.display = 'none'
   document.getElementById('game_canvas').style.display = 'none'
+  document.getElementById('arena_canvas').style.display = 'none'
   document.getElementById('info').style.display = 'none'
   handleSettings()
   setLobyPlayers()
@@ -363,7 +393,7 @@ const handleSettings = () => {
     },
     {
       label: `Effectos`,
-      key: 'aberrations',
+      key: 'effects',
       value: true
     }
   ]
@@ -377,22 +407,22 @@ const handleSettings = () => {
     let value = document.createElement('div')
     value.classList.add('value')
     value.innerText =
-      item.key === 'aberrations' ? (item.value ? 'si' : 'no') : item.value
+      item.key === 'effects' ? (item.value ? 'si' : 'no') : item.value
     let arrowLeft = document.createElement('div')
     arrowLeft.classList.add('arrow')
     arrowLeft.classList.add('left')
     arrowLeft.addEventListener('click', () => {
       let newValue =
-        item.key === 'aberrations'
+        item.key === 'effects'
           ? !settings[item.key]
           : settings[item.key] - (item.step || 1)
       if (
         (newValue >= item.min && newValue <= item.max) ||
-        item.key === 'aberrations'
+        item.key === 'effects'
       ) {
         settings[item.key] = newValue
         value.innerText =
-          item.key === 'aberrations' ? (newValue ? 'si' : 'no') : newValue
+          item.key === 'effects' ? (newValue ? 'si' : 'no') : newValue
       }
     })
     let arrowRight = document.createElement('div')
@@ -400,16 +430,16 @@ const handleSettings = () => {
     arrowRight.classList.add('right')
     arrowRight.addEventListener('click', () => {
       let newValue =
-        item.key === 'aberrations'
+        item.key === 'effects'
           ? !settings[item.key]
           : settings[item.key] + (item.step || 1)
       if (
         (newValue >= item.min && newValue <= item.max) ||
-        item.key === 'aberrations'
+        item.key === 'effects'
       ) {
         settings[item.key] = newValue
         value.innerText =
-          item.key === 'aberrations' ? (newValue ? 'si' : 'no') : newValue
+          item.key === 'effects' ? (newValue ? 'si' : 'no') : newValue
       }
     })
     option.appendChild(label)
@@ -430,51 +460,7 @@ socket.on('goalScored', (data) => {
 
 const engine = () => {
   requestAnimationFrame(engine)
-
-  if (!gameData || !gameData.polygon) {
-    let canvas = document.getElementById('player_example')
-    let canvasContext = canvas.getContext('2d')
-    canvas.width = 100
-    canvas.height = 100
-    const gradient = canvasContext.createRadialGradient(
-      examplePlayer.x - examplePlayer.radius * 0.3,
-      examplePlayer.y - examplePlayer.radius * 0.3,
-      examplePlayer.radius * 0.1,
-      examplePlayer.x,
-      examplePlayer.y,
-      examplePlayer.radius
-    )
-    gradient.addColorStop(0, 'white')
-    gradient.addColorStop(0.4, examplePlayer.color)
-    gradient.addColorStop(1, shadeColor(examplePlayer.color, -40))
-    canvasContext.fillStyle = gradient
-    canvasContext.beginPath()
-    canvasContext.arc(
-      examplePlayer.x,
-      examplePlayer.y,
-      examplePlayer.radius,
-      0,
-      Math.PI * 2
-    )
-    canvasContext.fill()
-  }
-
   if (gameData && gameData.polygon) {
-    document.getElementById('time').innerText = formatTime(
-      gameData.settings.time
-    )
-    document.getElementById(
-      'goal'
-    ).innerText = `Puntos: ${gameData.settings.goal}`
-    let scores = []
-    for (let id in gameData.score) {
-      scores.push(
-        `<div class="score box">
-         <div class="mini_player" style="background-color: ${gameData.players[id].color};"></div>
-        ${gameData.players[id].name}: ${gameData.score[id]}</div>`
-      )
-    }
-    document.getElementById('scores').innerHTML = scores.join('')
     let canvas = document.getElementById('game_canvas')
     let canvasContext = canvas.getContext('2d')
     // Clear canvas
@@ -503,86 +489,17 @@ const engine = () => {
     let dx = cx - mx
     let dy = cy - my
     let angle = Math.atan2(dy, dx) + Math.PI / 2
-
-    // === Rotate canvas to place player on the bottom ===
     canvasContext.translate(canvas.width / 2, canvas.height / 2)
     canvasContext.rotate(-angle)
     canvasContext.translate(-cx, -cy)
-
-    let center = { x: cx, y: cy }
-    let players = gameData.players
-
-    // === Draw triangle areas + goal lines (layer 1) ===
-    for (let id in players) {
-      let player = players[id]
-
-      let { a, b } = player.side
-      let { startT, endT } = player.goal
-      let goalOffset = gameData.playerCount > 5 ? 0 : 0.15
-
-      let gx1 = a.x + (b.x - a.x) * (startT - goalOffset)
-      let gy1 = a.y + (b.y - a.y) * (startT - goalOffset)
-      let gx2 = a.x + (b.x - a.x) * (endT + goalOffset)
-      let gy2 = a.y + (b.y - a.y) * (endT + goalOffset)
-
-      // Fill triangle area
-      canvasContext.beginPath()
-      canvasContext.moveTo(gx1, gy1)
-      canvasContext.lineTo(gx2, gy2)
-      canvasContext.lineTo(center.x, center.y)
-      canvasContext.closePath()
-      canvasContext.fillStyle = player.color
-      canvasContext.globalAlpha = 0.2
-      canvasContext.fill()
-      canvasContext.globalAlpha = 1
-
-      // Draw goal line
-      let trueGx1 = a.x + (b.x - a.x) * startT
-      let trueGy1 = a.y + (b.y - a.y) * startT
-      let trueGx2 = a.x + (b.x - a.x) * endT
-      let trueGy2 = a.y + (b.y - a.y) * endT
-
-      canvasContext.beginPath()
-      canvasContext.moveTo(trueGx1, trueGy1)
-      canvasContext.lineTo(trueGx2, trueGy2)
-
-      if (player.leave) {
-        canvasContext.globalAlpha = 0.7
-        canvasContext.lineWidth = 4
-        canvasContext.shadowBlur = 4
-      } else {
-        canvasContext.shadowColor = 'white'
-        canvasContext.lineWidth = 10
-        canvasContext.shadowBlur = 10
-      }
-      canvasContext.strokeStyle = player.color
-      canvasContext.stroke()
-      canvasContext.shadowBlur = 0
-      canvasContext.save()
-      canvasContext.restore()
-    }
-
-    // Draw polygon border
-    canvasContext.strokeStyle = 'white'
-    canvasContext.lineWidth = 2
-    canvasContext.beginPath()
-    let vertices = gameData.polygon
-    canvasContext.moveTo(vertices[0].x, vertices[0].y)
-    for (let i = 1; i < vertices.length; i++) {
-      canvasContext.lineTo(vertices[i].x, vertices[i].y)
-    }
-    canvasContext.closePath()
-    canvasContext.stroke()
-
     canvasContext.restore()
     canvasContext.save()
-
+    let players = gameData.players
     for (let id in players) {
       let player = players[id]
       if (!player.leave) {
         canvasContext.translate(player.x, player.y)
         canvasContext.rotate(angle)
-
         let gradient = canvasContext.createRadialGradient(
           -player.radius * 0.3,
           -player.radius * 0.3,
@@ -591,31 +508,21 @@ const engine = () => {
           0,
           player.radius
         )
-
         gradient.addColorStop(0, 'white')
         gradient.addColorStop(0.4, player.color)
         gradient.addColorStop(1, shadeColor(player.color, -40))
-
         canvasContext.fillStyle = gradient
         canvasContext.beginPath()
         canvasContext.arc(0, 0, player.radius, 0, Math.PI * 2)
         canvasContext.fill()
-
         canvasContext.restore()
         canvasContext.save()
       }
     }
-
     let ball = gameData.ball
-
     canvasContext.save()
-
-    // Move to ball center
     canvasContext.translate(ball.x, ball.y)
-    // Reverse the canvas rotation
     canvasContext.rotate(angle)
-
-    // Create gradient relative to (0, 0)
     let gradient = canvasContext.createRadialGradient(
       -ball.radius * 0.4,
       -ball.radius * 0.4,
@@ -624,22 +531,17 @@ const engine = () => {
       0,
       ball.radius
     )
-
     gradient.addColorStop(0, 'white')
     gradient.addColorStop(0.4, ball.color)
     gradient.addColorStop(1, shadeColor(ball.color, -40))
-
     canvasContext.shadowColor = 'white'
     canvasContext.shadowBlur = 6
-
     canvasContext.beginPath()
     canvasContext.arc(0, 0, ball.radius, 0, Math.PI * 2)
     canvasContext.fillStyle = gradient
     canvasContext.fill()
-
     canvasContext.shadowBlur = 0
     canvasContext.restore()
-
     for (let i = 0; i < particles.length; i++) {
       particles[i].update(canvasContext)
 
@@ -648,30 +550,127 @@ const engine = () => {
         i--
       }
     }
+  }
+}
 
-    if (gameData.countdownTimer > 0) {
-      canvasContext.restore() // undo the rotation
+const drawArena = () => {
+  let canvas = document.getElementById('arena_canvas')
+  let canvasContext = canvas.getContext('2d')
+  canvasContext.fillStyle = '#292929'
+  canvasContext.fillRect(0, 0, innerWidth, innerHeight)
+  canvasContext.save()
+  canvas.width = window.innerWidth
+  canvas.height = window.innerHeight
+  let { a, b } = gameData.players?.[socket.id].side
+  let mx = (a.x + b.x) / 2
+  let my = (a.y + b.y) / 2
+  let cx = gameData.area.x
+  let cy = gameData.area.y
+  let dx = cx - mx
+  let dy = cy - my
+  let angle = Math.atan2(dy, dx) + Math.PI / 2
 
-      // Reset transform so countdown is drawn in screen space
-      canvasContext.setTransform(1, 0, 0, 1, 0, 0)
+  // === Rotate canvas to place player on the bottom ===
+  canvasContext.translate(canvas.width / 2, canvas.height / 2)
+  canvasContext.rotate(-angle)
+  canvasContext.translate(-cx, -cy)
 
-      canvasContext.fillStyle = 'white'
-      canvasContext.font = 'bold 100px sans-serif'
-      canvasContext.textAlign = 'center'
-      canvasContext.textBaseline = 'middle'
-      canvasContext.shadowColor = 'black'
+  let center = { x: cx, y: cy }
+  let players = gameData.players
+
+  // === Draw triangle areas + goal lines (layer 1) ===
+  for (let id in players) {
+    let player = players[id]
+
+    let { a, b } = player.side
+    let { startT, endT } = player.goal
+    let goalOffset = gameData.playerCount > 5 ? 0 : 0.15
+
+    let gx1 = a.x + (b.x - a.x) * (startT - goalOffset)
+    let gy1 = a.y + (b.y - a.y) * (startT - goalOffset)
+    let gx2 = a.x + (b.x - a.x) * (endT + goalOffset)
+    let gy2 = a.y + (b.y - a.y) * (endT + goalOffset)
+
+    // Fill triangle area
+    canvasContext.beginPath()
+    canvasContext.moveTo(gx1, gy1)
+    canvasContext.lineTo(gx2, gy2)
+    canvasContext.lineTo(center.x, center.y)
+    canvasContext.closePath()
+    canvasContext.fillStyle = player.color
+    canvasContext.globalAlpha = 0.2
+    canvasContext.fill()
+    canvasContext.globalAlpha = 1
+
+    // Draw goal line
+    let trueGx1 = a.x + (b.x - a.x) * startT
+    let trueGy1 = a.y + (b.y - a.y) * startT
+    let trueGx2 = a.x + (b.x - a.x) * endT
+    let trueGy2 = a.y + (b.y - a.y) * endT
+
+    canvasContext.beginPath()
+    canvasContext.moveTo(trueGx1, trueGy1)
+    canvasContext.lineTo(trueGx2, trueGy2)
+
+    if (player.leave) {
+      canvasContext.globalAlpha = 0.7
+      canvasContext.lineWidth = 4
+      canvasContext.shadowBlur = 4
+    } else {
+      canvasContext.shadowColor = 'white'
+      canvasContext.lineWidth = 10
       canvasContext.shadowBlur = 10
-
-      canvasContext.fillText(
-        gameData.countdownTimer,
-        canvas.width / 2,
-        canvas.height / 2
-      )
-
-      canvasContext.shadowBlur = 0
-
-      return
     }
+    canvasContext.strokeStyle = player.color
+    canvasContext.stroke()
+    canvasContext.shadowBlur = 0
+    canvasContext.save()
+    canvasContext.restore()
+  }
+
+  // Draw polygon border
+  canvasContext.strokeStyle = 'white'
+  canvasContext.lineWidth = 2
+  canvasContext.beginPath()
+  let vertices = gameData.polygon
+  canvasContext.moveTo(vertices[0].x, vertices[0].y)
+  for (let i = 1; i < vertices.length; i++) {
+    canvasContext.lineTo(vertices[i].x, vertices[i].y)
+  }
+  canvasContext.closePath()
+  canvasContext.stroke()
+
+  canvasContext.restore()
+  canvasContext.save()
+}
+
+const drawCustomizablePlayer = () => {
+  if (!gameData || !gameData.polygon) {
+    let canvas = document.getElementById('player_example')
+    let canvasContext = canvas.getContext('2d')
+    canvas.width = 100
+    canvas.height = 100
+    const gradient = canvasContext.createRadialGradient(
+      examplePlayer.x - examplePlayer.radius * 0.3,
+      examplePlayer.y - examplePlayer.radius * 0.3,
+      examplePlayer.radius * 0.1,
+      examplePlayer.x,
+      examplePlayer.y,
+      examplePlayer.radius
+    )
+    gradient.addColorStop(0, 'white')
+    gradient.addColorStop(0.4, examplePlayer.color)
+    gradient.addColorStop(1, shadeColor(examplePlayer.color, -40))
+    canvasContext.fillStyle = gradient
+    canvasContext.beginPath()
+    canvasContext.arc(
+      examplePlayer.x,
+      examplePlayer.y,
+      examplePlayer.radius,
+      0,
+      Math.PI * 2
+    )
+    canvasContext.fill()
   }
 }
 
@@ -750,6 +749,8 @@ const handleColor = (data) => {
   examplePlayer.color = color
   if (gameData && gameData.id) {
     debouncedEmitColor(color)
+  } else {
+    drawCustomizablePlayer()
   }
 }
 
@@ -762,6 +763,7 @@ function debounce(fn, delay) {
 }
 
 const debouncedEmitColor = debounce((color) => {
+  drawCustomizablePlayer()
   socket.emit('color', { id: gameData.id, player: socket.id, color })
 }, 100)
 

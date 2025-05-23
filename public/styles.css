@@ -194,6 +194,13 @@ body {
 .game_canvas {
   display: none;
   padding: 0;
+  position: absolute;
+}
+
+.arena_canvas {
+  display: none;
+  padding: 0;
+  position: absolute;
 }
 
 .themes {
@@ -233,7 +240,7 @@ body {
   }
 }
 
-.aberrations {
+.effects {
   display: flex;
   align-items: center;
   position: absolute;
@@ -241,7 +248,7 @@ body {
   left: 50%;
   translate: -50% 0;
   transition: all 0.5s;
-  .aberration {
+  .effect {
     margin: 0 16px;
     cursor: pointer;
     padding: 16px 32px;
@@ -466,6 +473,18 @@ body {
       box-shadow: 0 0px 20px -10px white;
     }
   }
+}
+
+.countdown_timer{
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  z-index: 999;
+  translate: -50% -50%;
+  font-size: 100px;
+  font-weight: 700;
+  color: white;
+  pointer-events: none;
 }
 
 .test {

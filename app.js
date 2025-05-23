@@ -13,7 +13,7 @@ dotenv.config()
 const port = 3000
 
 let games = {}
-let aberrations = [
+let effects = [
   // {
   //   name: 'PULSO',
   //   votes: {},
@@ -90,7 +90,7 @@ let aberrations = [
 ]
 let timersIntervals = {}
 let gameLoopsIntervals = {}
-let aberrationsIntervals = {}
+let effectsIntervals = {}
 let area = {
   x: 400,
   y: 300,
@@ -168,19 +168,19 @@ app.get('/twitch/callback', async (req, res) => {
       let matchNumber = message.match(voteCommandRegexNumber)
       let gameId = state
       let game = games[gameId]
-      if (game && game.aberrations) {
+      if (game && game.effects) {
         let voteName
         if (matchNumber) {
           const voteIndex = parseInt(matchNumber[1]) - 1
-          voteName = Object.keys(game.aberrations)[voteIndex]
+          voteName = Object.keys(game.effects)[voteIndex]
         } else if (matchName) {
-          let aberration = game.aberrations[matchName[1].toUpperCase()]
-          if (aberration) {
-            voteName = aberration.name
+          let effect = game.effects[matchName[1].toUpperCase()]
+          if (effect) {
+            voteName = effect.name
           }
         }
         if (voteName) {
-          handleVoteAberrations({
+          handleVoteEffects({
             game: gameId,
             choise: { name: voteName },
             id: tags['user-id']
@@ -237,6 +237,7 @@ const generateColor = () => {
 }
 
 io.on('connection', (socket) => {
+  io.to(socket.id).emit('connected')
   socket.on('start', (data) => {
     let game = games[data.gameId]
     game.settings = data.settings
@@ -296,17 +297,17 @@ io.on('connection', (socket) => {
       }
     }, 1_000)
     timersIntervals[game.id] = timerInterval
-    io.to(game.id).emit('start')
+    io.to(game.id).emit('start', game)
     let gameLoopInterval = setInterval(() => gameLoop(game.id), 1000 / 90)
     gameLoopsIntervals[game.id] = gameLoopInterval
-    if(game.settings.effects){
-      let aberrationsInterval = setInterval(() => {
-        setAberrations(game)
+    if (game.settings.effects) {
+      let effectsInterval = setInterval(() => {
+        setEffects(game)
       }, 60_000)
       setTimeout(() => {
-        setAberrations(game)
+        setEffects(game)
       }, 8_000)
-      aberrationsIntervals[game.id] = aberrationsInterval
+      effectsIntervals[game.id] = effectsInterval
     }
     resetBall(game)
   })
@@ -341,13 +342,13 @@ io.on('connection', (socket) => {
   })
 
   socket.on('test', (data) => {
-    for (let name in games[data.game].aberrations) {
-      let aberration = games[data.game].aberrations[name]
-      for (let id in aberration.votes) {
-        delete aberration.votes[id]
+    for (let name in games[data.game].effects) {
+      let effect = games[data.game].effects[name]
+      for (let id in effect.votes) {
+        delete effect.votes[id]
       }
     }
-    io.to(data.game).emit('aberrations', games[data.game].aberrations)
+    io.to(data.game).emit('effects', games[data.game].effects)
   })
 
   socket.on('cancel', (data) => {
@@ -419,72 +420,71 @@ io.on('connection', (socket) => {
     handleRestartGame(games[data.gameId])
   })
 
-  socket.on('aberrations', (data) => {
-    handleVoteAberrations({ ...data, id: socket.id })
+  socket.on('effects', (data) => {
+    handleVoteEffects({ ...data, id: socket.id })
   })
 })
 
-const handleVoteAberrations = (data) => {
-  for (let name in games[data.game].aberrations) {
-    let aberration = games[data.game].aberrations[name]
-    if (aberration.votes[data.id]) {
-      delete aberration.votes[data.id]
+const handleVoteEffects = (data) => {
+  for (let name in games[data.game].effects) {
+    let effect = games[data.game].effects[name]
+    if (effect.votes[data.id]) {
+      delete effect.votes[data.id]
     } else if (
       data.choise.name?.toString()?.toLowerCase() ===
       name?.toString()?.toLowerCase()
     ) {
-      aberration.votes[data.id] = true
+      effect.votes[data.id] = true
     }
   }
-  io.to(data.game).emit('aberrations', games[data.game].aberrations)
+  io.to(data.game).emit('effects', games[data.game].effects)
 }
 
-const setAberrations = (game) => {
-  const choises = getRandomAberrations(3)
-  game.aberrations = choises
-  io.to(game.id).emit('aberrations', { choises })
+const setEffects = (game) => {
+  const choises = getRandomEffects(3)
+  game.effects = choises
+  io.to(game.id).emit('effects', { choises })
   setTimeout(() => {
     let maxVotes = -Infinity
-    let topAberrations = []
-    for (let name in game.aberrations) {
-      let votes = Object.keys(game.aberrations[name].votes).length
+    let topEffects = []
+    for (let name in game.effects) {
+      let votes = Object.keys(game.effects[name].votes).length
       if (votes > maxVotes) {
         maxVotes = votes
-        topAberrations = [name]
+        topEffects = [name]
       } else if (votes === maxVotes) {
-        topAberrations.push(name)
+        topEffects.push(name)
       }
     }
     let selected
-    if (topAberrations.length > 1) {
-      selected =
-        topAberrations[Math.floor(Math.random() * topAberrations.length)]
+    if (topEffects.length > 1) {
+      selected = topEffects[Math.floor(Math.random() * topEffects.length)]
     } else {
-      selected = topAberrations[0]
+      selected = topEffects[0]
     }
-    let aberration = game.aberrations[selected]
-    if (aberration) {
-      aberration.selected = true
-      aberration.addEffect(game.id)
-      io.to(game.id).emit('aberrations', { aberration })
+    let effect = game.effects[selected]
+    if (effect) {
+      effect.selected = true
+      effect.addEffect(game.id)
+      io.to(game.id).emit('effects', { effect })
       setTimeout(() => {
-        aberration.removeEffect(game.id)
-        io.to(game.id).emit('aberrations')
+        effect.removeEffect(game.id)
+        io.to(game.id).emit('effects')
       }, 30_000)
     }
   }, 10_000)
 }
 
-const getRandomAberrations = (count) => {
-  let availableAlterations = [...aberrations]
+const getRandomEffects = (count) => {
+  let availableAlterations = [...effects]
   let choises = {}
   while (
     Object.keys(choises).length < count &&
     availableAlterations.length > 0
   ) {
     let randomIndex = Math.floor(Math.random() * availableAlterations.length)
-    let aberration = availableAlterations.splice(randomIndex, 1)[0]
-    choises[aberration.name] = aberration
+    let effect = availableAlterations.splice(randomIndex, 1)[0]
+    choises[effect.name] = effect
   }
   return choises
 }
@@ -557,7 +557,7 @@ const handleCancel = (data) => {
     if (!game.playerCount || !game.activePlayerCount) {
       clearInterval(timersIntervals[game.id])
       clearInterval(gameLoopsIntervals[game.id])
-      clearInterval(aberrationsIntervals[game.id])
+      clearInterval(effectsIntervals[game.id])
       delete games[game.id]
       io.emit('lobies', games)
       io.to(game.id).emit('cancel')
@@ -640,12 +640,14 @@ const resetPlayers = (data) => {
 
 const resetBall = (data) => {
   let game = games[data.id]
-  if(game){
+  if (game) {
     ballAimRandomPlayer(data)
     game.ball.bounces = 0
     game.countdownTimer = 3
+    io.to(game.id).emit('countdownTimer', game.countdownTimer)
     let countdownInterval = setInterval(() => {
       game.countdownTimer--
+      io.to(game.id).emit('countdownTimer', game.countdownTimer)
       if (game.countdownTimer === 0) {
         clearInterval(countdownInterval)
       }
@@ -699,18 +701,17 @@ const handleGoal = (data) => {
       data.winner = data.player
     }
   }
+  io.emit('goalScored', {
+    x: data.ball.x,
+    y: data.ball.y,
+    color: data.players[data.player].color
+  })
   if (data.winner) {
     handleWinner(data)
   } else {
     resetBall(data)
     resetPlayers(data)
   }
-  console.log(`Enodrac - dataAAAAAAAAAAAAA`, data)
-  io.emit('goalScored', {
-    x: data.ball.x,
-    y: data.ball.y,
-    color: data.players[data.player].color
-  })
 }
 
 const updatePlayerPosition = (game, playerId, movement) => {
@@ -745,7 +746,7 @@ const updatePlayerPosition = (game, playerId, movement) => {
 const handleWinner = (game) => {
   clearInterval(timersIntervals[game.id])
   clearInterval(gameLoopsIntervals[game.id])
-  clearInterval(aberrationsIntervals[game.id])
+  clearInterval(effectsIntervals[game.id])
   io.to(game.id).emit('victory', game)
 }
 
