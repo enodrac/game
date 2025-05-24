@@ -892,7 +892,7 @@ const predictPlayerMovement = (movement, gameId) => {
   let prediction = clientSidePrediction[gameId]
 
   const { a, b } = gameData.players?.[socket.id].side
-  const playerSpeed = 0.01 * (gameData.settings.playerSpeed / 5) // Match with server speed
+  const playerSpeed = gameData.playerData.speed * (gameData.settings.playerSpeed / 5) // Match with server speed
 
   let predictedX = player.x
   let predictedY = player.y
@@ -911,48 +911,25 @@ const predictPlayerMovement = (movement, gameId) => {
   player.x = predictedX
   player.y = predictedY
   player.t = predictedT
-
-  // Store the input with a timestamp
-  prediction.inputBuffer.push({
-    input: movement,
-    timestamp: Date.now()
-  })
 }
 
-socket.on('server_update', (data) => {
-  if (!gameData || gameData.id !== data.gameId) return
-  if (!gameData.players[socket.id]) return
-
-  const player = gameData.players[socket.id]
-  if (!clientSidePrediction[data.gameId]) return
-
-  let prediction = clientSidePrediction[data.gameId]
-  let inputBuffer = prediction.inputBuffer
-
-  // Server Reconciliation
-  let serverPos = { x: data.x, y: data.y }
-  let clientPos = { x: player.x, y: player.y }
-
-  // Calculate the difference between server and client positions
-  let dx = serverPos.x - clientPos.x
-  let dy = serverPos.y - clientPos.y
-  let distance = Math.sqrt(dx * dx + dy * dy)
-
-  // If the client is too far from the server, reconcile
-  if (distance > prediction.reconcileThreshold) {
-    // Set the client's position to the server's position
-    player.x = data.x
-    player.y = data.y
-    player.t = player.side.a.x + (player.side.b.x - player.side.a.x) * data.x //this line will throw an error
-    // Clear the input buffer
-    inputBuffer = []
-    prediction.inputBuffer = []
+socket.on('server_update', (serverState) => {
+  if (!gameData || gameData.id !== serverState.gameId) return;
+  if (!gameData.players[socket.id]) return;
+  const player = gameData.players[socket.id];
+  if (!player.side || !player.goal) {
+    return;
   }
-
-  // Always reconcile, but gradually
-  player.x = data.x * 0.25 + player.x * 0.75
-  player.y = data.y * 0.25 + player.y * 0.75
-})
+  const { a, b } = player.side;
+  const interpolationFactor = 0.3; // Adjust for smoothness (0.1-0.5 is common). 1.0 = hard snap.
+  if (typeof serverState.t === 'number' && !isNaN(serverState.t)) {
+    player.t = player.t * (1 - interpolationFactor) + serverState.t * interpolationFactor;
+    player.t = Math.max(player.goal.startT, Math.min(player.goal.endT, player.t));
+    player.x = a.x + (b.x - a.x) * player.t;
+    player.y = a.y + (b.y - a.y) * player.t;
+  } else {
+  }
+});
 
 const test = () => {
   socket.emit('test', { game: gameData.id })

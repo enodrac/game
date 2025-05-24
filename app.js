@@ -406,12 +406,13 @@ io.on('connection', (socket) => {
     updatePlayerPosition(games[data.gameId], socket.id, data.movement)
 
     // Send the *authoritative* player state back to the client
-    io.to(data.gameId).emit('server_update', {
+    io.to(socket.id).emit('server_update', {
       timestamp: Date.now(),
       x: player.x,
       y: player.y,
-      vx: player.vx, // Include velocity for smoother correction
+      vx: player.vx,
       vy: player.vy,
+      t: player.t,
       gameId: data.gameId
     })
   })
