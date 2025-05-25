@@ -151,8 +151,17 @@ socket.on('connected', () => {
 })
 
 socket.on('game', (game) => {
-  gameData = game
+  let serverPlayers = { ...game.players }
+  delete game.players
+  gameData = { ...gameData, ...game }
   if (gameData && gameData.polygon) {
+    for (let id in serverPlayers) {
+      if (id === socket.id) {
+        serverT = serverPlayers[id].t
+      } else {
+        gameData.players[id] = serverPlayers[id]
+      }
+    }
     document.getElementById('time').innerText = formatTime(
       gameData.settings.time
     )
@@ -160,7 +169,7 @@ socket.on('game', (game) => {
     for (let id in gameData.score) {
       scores.push(
         `<div class="score box">
-         <div class="mini_player" style="background-color: ${gameData.players[id].color};"></div>
+        <div class="mini_player" style="background-color: ${gameData.players[id].color};"></div>
         ${gameData.players[id].name}: ${gameData.score[id]}</div>`
       )
     }
@@ -664,8 +673,6 @@ const drawCustomizablePlayer = () => {
 let lastMovement = { left: false, right: false }
 
 const handleMovement = (event, start) => {
-  let leftInterval
-  let rightInterval
   if (gameData && gameData.polygon) {
     if (event.key.toLowerCase() === 'a') {
       movement.left = start
@@ -682,50 +689,37 @@ const handleMovement = (event, start) => {
       movement.left !== lastMovement.left ||
       movement.right !== lastMovement.right
     ) {
-      if (event.key.toLowerCase() === 'a') {
-        if (start) {
-          clearInterval(lastMovement.rightInterval)
-          leftInterval = setInterval(() => {
-            handlePredictPlayerMovement()
-          }, 1000 / 90)
-        } else {
-          clearInterval(lastMovement.leftInterval)
-        }
-      } else if (event.key.toLowerCase() === 'd') {
-        if (start) {
-          rightInterval = setInterval(() => {
-            handlePredictPlayerMovement()
-          }, 1000 / 90)
-          clearInterval(lastMovement.leftInterval)
-        } else {
-          clearInterval(lastMovement.rightInterval)
-        }
-      }
       socket.emit('player', { movement, gameId: gameData.id })
-      lastMovement = {
-        ...lastMovement,
-        ...movement,
-        leftInterval,
-        rightInterval
-      }
+      lastMovement = { ...movement }
     }
   }
 }
 
+setInterval(() => {
+  handlePredictPlayerMovement()
+}, 1000 / 60)
+
+let serverT =  0.5000
+
+const lerp = (a, b, t) => a + (b - a) * t
+
 const handlePredictPlayerMovement = () => {
   if (gameData && !gameData.countdownTimer && gameData.players[socket.id]) {
     let player = gameData.players[socket.id]
-    let { a, b } = player.side
-    let playerSpeed =
-      gameData.playerData.speed * (gameData.settings.playerSpeed / 5)
-    if (movement && movement.right) {
-      player.t = Math.max(player.goal.startT, player.t - playerSpeed)
+    if (player.side) {
+      let { a, b } = player.side
+      let playerSpeed =
+        gameData.playerData.speed * (gameData.settings.playerSpeed / 5)
+      if (movement && movement.right) {
+        player.t = Math.max(player.goal.startT, player.t - playerSpeed)
+      }
+      if (movement && movement.left) {
+        player.t = Math.min(player.goal.endT, player.t + playerSpeed)
+      }
+      player.t = lerp(player.t, serverT, 0.1)
+      player.x = a.x + (b.x - a.x) * player.t
+      player.y = a.y + (b.y - a.y) * player.t
     }
-    if (movement && movement.left) {
-      player.t = Math.min(player.goal.endT, player.t + playerSpeed)
-    }
-    player.x = a.x + (b.x - a.x) * player.t
-    player.y = a.y + (b.y - a.y) * player.t
   }
 }
 

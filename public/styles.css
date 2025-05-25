@@ -475,7 +475,7 @@ body {
   }
 }
 
-.countdown_timer{
+.countdown_timer {
   position: absolute;
   top: 50%;
   left: 50%;
@@ -491,6 +491,10 @@ body {
   position: absolute;
   top: 16px;
   left: 16px;
+  opacity: 0;
+  &:hover {
+    opacity: 1;
+  }
 }
 
 .arrow {

@@ -97,11 +97,11 @@ let area = {
   radius: 300
 }
 let playerData = {
-  speed: 0.007,
+  speed: 0.01,
   radius: 35
 }
 let ballData = {
-  speed: 3,
+  speed: 5,
   randomness: 0.01,
   speedToAdd: 0.03,
   radius: 10
@@ -298,7 +298,7 @@ io.on('connection', (socket) => {
     }, 1_000)
     timersIntervals[game.id] = timerInterval
     io.to(game.id).emit('start', game)
-    let gameLoopInterval = setInterval(() => gameLoop(game.id), 1000 / 90)
+    let gameLoopInterval = setInterval(() => gameLoop(game.id), 1000 / 60)
     gameLoopsIntervals[game.id] = gameLoopInterval
     if (game.settings.effects) {
       let effectsInterval = setInterval(() => {
