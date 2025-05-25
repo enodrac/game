@@ -19,9 +19,6 @@ let socket = io()
     - GIRO (el poligono gira lentamente para cambiar la perspectiva)
 */
 
-// Store client-side player history
-let clientSidePrediction = {}
-
 class Particle {
   constructor(x, y, color) {
     this.x = x
@@ -471,16 +468,6 @@ const engine = () => {
     canvas.width = window.innerWidth
     canvas.height = window.innerHeight
 
-    // Send movement input
-    if (
-      (movement.left || movement.right) &&
-      !gameData.winner &&
-      !gameData.countdownTimer
-    ) {
-      socket.emit('player', { movement, gameId: gameData.id })
-      predictPlayerMovement(movement, gameData.id)
-    }
-
     let { a, b } = gameData.players?.[socket.id].side
     let mx = (a.x + b.x) / 2
     let my = (a.y + b.y) / 2
@@ -676,27 +663,70 @@ const drawCustomizablePlayer = () => {
 
 let lastMovement = { left: false, right: false }
 
-function emitIfChanged() {
-  if (gameData && gameData.id) {
+const handleMovement = (event, start) => {
+  let leftInterval
+  let rightInterval
+  if (gameData && gameData.polygon) {
+    if (event.key.toLowerCase() === 'a') {
+      movement.left = start
+      if (start) {
+        movement.right = false
+      }
+    } else if (event.key.toLowerCase() === 'd') {
+      movement.right = start
+      if (start) {
+        movement.left = false
+      }
+    }
     if (
       movement.left !== lastMovement.left ||
       movement.right !== lastMovement.right
     ) {
-      socket.emit('player', { movement, gameId: gameData.id })
-      lastMovement = { ...movement }
+      if (event.key.toLowerCase() === 'a') {
+        if (start) {
+          clearInterval(lastMovement.rightInterval)
+          leftInterval = setInterval(() => {
+            handlePredictPlayerMovement()
+          }, 1000 / 90)
+        } else {
+          clearInterval(lastMovement.leftInterval)
+        }
+      } else if (event.key.toLowerCase() === 'd') {
+        if (start) {
+          rightInterval = setInterval(() => {
+            handlePredictPlayerMovement()
+          }, 1000 / 90)
+          clearInterval(lastMovement.leftInterval)
+        } else {
+          clearInterval(lastMovement.rightInterval)
+        }
+      }
+      // socket.emit('player', { movement, gameId: gameData.id })
+      lastMovement = {
+        ...lastMovement,
+        ...movement,
+        leftInterval,
+        rightInterval
+      }
     }
   }
 }
 
-const handleMovement = (event, start) => {
-  if (event.key.toLowerCase() === 'a') {
-    movement.left = start
-    if (start) movement.right = false
-  } else if (event.key.toLowerCase() === 'd') {
-    movement.right = start
-    if (start) movement.left = false
+const handlePredictPlayerMovement = () => {
+  if (gameData && gameData.players[socket.id]) {
+    let player = gameData.players[socket.id]
+    let { a, b } = player.side
+    let playerSpeed =
+      gameData.playerData.speed * (gameData.settings.playerSpeed / 5)
+    if (movement && movement.right) {
+      player.t = Math.max(player.goal.startT, player.t - playerSpeed)
+    }
+    if (movement && movement.left) {
+      player.t = Math.min(player.goal.endT, player.t + playerSpeed)
+    }
+    player.x = a.x + (b.x - a.x) * player.t
+    player.y = a.y + (b.y - a.y) * player.t
   }
-  // emitIfChanged()
 }
 
 const handleCreate = () => {
@@ -877,59 +907,6 @@ const handleRandomColor = () => {
   document.getElementById('blue_slider').value = blue
   debouncedEmitColor(color)
 }
-
-const predictPlayerMovement = (movement, gameId) => {
-  if (!gameData || !gameData.players || !gameData.players[socket.id]) return
-
-  const player = gameData.players[socket.id]
-
-  if (!clientSidePrediction[gameId]) {
-    clientSidePrediction[gameId] = {
-      inputBuffer: [], // Store the client's inputs
-      reconcileThreshold: 10 // maximum difference to reconcile (adjust this value)
-    }
-  }
-  let prediction = clientSidePrediction[gameId]
-
-  const { a, b } = gameData.players?.[socket.id].side
-  const playerSpeed = gameData.playerData.speed * (gameData.settings.playerSpeed / 5) // Match with server speed
-
-  let predictedX = player.x
-  let predictedY = player.y
-  let predictedT = player.t
-
-  if (movement && movement.right) {
-    predictedT = Math.max(player.goal.startT, player.t - playerSpeed)
-  }
-  if (movement && movement.left) {
-    predictedT = Math.min(player.goal.endT, player.t + playerSpeed)
-  }
-
-  predictedX = a.x + (b.x - a.x) * predictedT
-  predictedY = a.y + (b.y - a.y) * predictedT
-
-  player.x = predictedX
-  player.y = predictedY
-  player.t = predictedT
-}
-
-socket.on('server_update', (serverState) => {
-  if (!gameData || gameData.id !== serverState.gameId) return;
-  if (!gameData.players[socket.id]) return;
-  const player = gameData.players[socket.id];
-  if (!player.side || !player.goal) {
-    return;
-  }
-  const { a, b } = player.side;
-  const interpolationFactor = 0.3; // Adjust for smoothness (0.1-0.5 is common). 1.0 = hard snap.
-  if (typeof serverState.t === 'number' && !isNaN(serverState.t)) {
-    player.t = player.t * (1 - interpolationFactor) + serverState.t * interpolationFactor;
-    player.t = Math.max(player.goal.startT, Math.min(player.goal.endT, player.t));
-    player.x = a.x + (b.x - a.x) * player.t;
-    player.y = a.y + (b.y - a.y) * player.t;
-  } else {
-  }
-});
 
 const test = () => {
   socket.emit('test', { game: gameData.id })

@@ -298,7 +298,8 @@ io.on('connection', (socket) => {
     }, 1_000)
     timersIntervals[game.id] = timerInterval
     io.to(game.id).emit('start', game)
-    let gameLoopInterval = setInterval(() => gameLoop(game.id), 1000 / 90)
+    // let gameLoopInterval = setInterval(() => gameLoop(game.id), 1000 / 90)
+    let gameLoopInterval = setInterval(() => gameLoop(game.id), 1000)
     gameLoopsIntervals[game.id] = gameLoopInterval
     if (game.settings.effects) {
       let effectsInterval = setInterval(() => {
@@ -400,21 +401,7 @@ io.on('connection', (socket) => {
     if (!games[data.gameId]) {
       return
     }
-    let player = games[data.gameId].players[socket.id]
-    player.movement = data.movement
-    // Update server-side player position based on movement
-    updatePlayerPosition(games[data.gameId], socket.id, data.movement)
-
-    // Send the *authoritative* player state back to the client
-    io.to(socket.id).emit('server_update', {
-      timestamp: Date.now(),
-      x: player.x,
-      y: player.y,
-      vx: player.vx,
-      vy: player.vy,
-      t: player.t,
-      gameId: data.gameId
-    })
+    games[data.gameId].players[socket.id].movement = data.movement
   })
 
   socket.on('restart', (data) => {
@@ -715,40 +702,28 @@ const handleGoal = (data) => {
   }
 }
 
-const updatePlayerPosition = (game, playerId, movement) => {
-  const player = game.players[playerId]
-  if (!player.side || !player.goal) return
-
-  const { a, b } = player.side
-  const playerSpeed = game.playerData.speed * (game.settings.playerSpeed / 5) // Use game settings
-
-  if (!player.vx) player.vx = 0
-  if (!player.vy) player.vy = 0
-
-  if (movement && movement.right) {
-    player.t = Math.max(player.goal.startT, player.t - playerSpeed)
-  }
-  if (movement && movement.left) {
-    player.t = Math.min(player.goal.endT, player.t + playerSpeed)
-  }
-
-  // Calculate the new position based on 't'
-  player.x = a.x + (b.x - a.x) * player.t
-  player.y = a.y + (b.y - a.y) * player.t
-
-  // Basic velocity calculation
-  player.vx = (player.x - (player.lastX || player.x)) / (1000 / 90) // rough delta time
-  player.vy = (player.y - (player.lastY || player.y)) / (1000 / 90) // rough delta time
-
-  player.lastX = player.x
-  player.lastY = player.y
-}
-
 const handleWinner = (game) => {
   clearInterval(timersIntervals[game.id])
   clearInterval(gameLoopsIntervals[game.id])
   clearInterval(effectsIntervals[game.id])
   io.to(game.id).emit('victory', game)
+}
+
+const handlePlayerMovement = (data) => {
+  for (let id in data.players) {
+    let player = data.players[id]
+    let { a, b } = player.side
+    let playerSpeed =
+      data.playerData.speed * (data.settings.playerSpeed / 5)
+    if (player.movement && player.movement.right) {
+      player.t = Math.max(player.goal.startT, player.t - playerSpeed)
+    }
+    if (player.movement && player.movement.left) {
+      player.t = Math.min(player.goal.endT, player.t + playerSpeed)
+    }
+    player.x = a.x + (b.x - a.x) * player.t
+    player.y = a.y + (b.y - a.y) * player.t
+  }
 }
 
 const gameLoop = (gameId) => {
@@ -771,155 +746,157 @@ const gameLoop = (gameId) => {
       }
     }
 
+    handlePlayerMovement(game)
+
     let steps = Math.ceil(
       Math.max(Math.abs(ball.vx), Math.abs(ball.vy)) / ball.radius
     )
 
-    for (let i = 0; i < steps; i++) {
-      ball.x += ball.vx / steps
-      ball.y += ball.vy / steps
+    // for (let i = 0; i < steps; i++) {
+    //   ball.x += ball.vx / steps
+    //   ball.y += ball.vy / steps
 
-      let minWallDist = ball.radius
-      let minPlayerDist = ball.radius + game.playerData.radius
+    //   let minWallDist = ball.radius
+    //   let minPlayerDist = ball.radius + game.playerData.radius
 
-      // === Check for goal ===
-      for (let id in players) {
-        let player = players[id]
-        if (!player.side || !player.goal) continue
-        let { a, b } = player.side
-        let { startT, endT } = player.goal
+    //   // === Check for goal ===
+    //   for (let id in players) {
+    //     let player = players[id]
+    //     if (!player.side || !player.goal) continue
+    //     let { a, b } = player.side
+    //     let { startT, endT } = player.goal
 
-        let gx1 = a.x + (b.x - a.x) * startT
-        let gy1 = a.y + (b.y - a.y) * startT
-        let gx2 = a.x + (b.x - a.x) * endT
-        let gy2 = a.y + (b.y - a.y) * endT
+    //     let gx1 = a.x + (b.x - a.x) * startT
+    //     let gy1 = a.y + (b.y - a.y) * startT
+    //     let gx2 = a.x + (b.x - a.x) * endT
+    //     let gy2 = a.y + (b.y - a.y) * endT
 
-        let dx = gx2 - gx1
-        let dy = gy2 - gy1
-        let lengthSq = dx * dx + dy * dy
-        let t = Math.max(
-          0,
-          Math.min(1, ((ball.x - gx1) * dx + (ball.y - gy1) * dy) / lengthSq)
-        )
-        let closestX = gx1 + t * dx
-        let closestY = gy1 + t * dy
+    //     let dx = gx2 - gx1
+    //     let dy = gy2 - gy1
+    //     let lengthSq = dx * dx + dy * dy
+    //     let t = Math.max(
+    //       0,
+    //       Math.min(1, ((ball.x - gx1) * dx + (ball.y - gy1) * dy) / lengthSq)
+    //     )
+    //     let closestX = gx1 + t * dx
+    //     let closestY = gy1 + t * dy
 
-        let distX = ball.x - closestX
-        let distY = ball.y - closestY
-        let distSq = distX * distX + distY * distY
+    //     let distX = ball.x - closestX
+    //     let distY = ball.y - closestY
+    //     let distSq = distX * distX + distY * distY
 
-        let pdx = ball.x - player.x
-        let pdy = ball.y - player.y
-        let playerDistSq = pdx * pdx + pdy * pdy
+    //     let pdx = ball.x - player.x
+    //     let pdy = ball.y - player.y
+    //     let playerDistSq = pdx * pdx + pdy * pdy
 
-        if (
-          distSq <= ball.radius * ball.radius &&
-          playerDistSq > (ball.radius + game.playerData.radius) ** 2
-        ) {
-          // goal
-          let lastPlayerId = ball.player || id
-          handleGoal({ ...game, player: lastPlayerId })
-          // game.score[lastPlayerId] += lastPlayerId === id ? -1 : 1
-          // // win conditions
-          // if (game.score[lastPlayerId] >= game.settings.goal || game.tie) {
-          //   game.winner = lastPlayerId
-          //   handleWinner(game)
-          //   break
-          // }
-          // resetBall(game)
-          // resetPlayers(game)
-          break
-        }
+    //     if (
+    //       distSq <= ball.radius * ball.radius &&
+    //       playerDistSq > (ball.radius + game.playerData.radius) ** 2
+    //     ) {
+    //       // goal
+    //       let lastPlayerId = ball.player || id
+    //       handleGoal({ ...game, player: lastPlayerId })
+    //       // game.score[lastPlayerId] += lastPlayerId === id ? -1 : 1
+    //       // // win conditions
+    //       // if (game.score[lastPlayerId] >= game.settings.goal || game.tie) {
+    //       //   game.winner = lastPlayerId
+    //       //   handleWinner(game)
+    //       //   break
+    //       // }
+    //       // resetBall(game)
+    //       // resetPlayers(game)
+    //       break
+    //     }
 
-        player = players[id]
-        dx = ball.x - player.x
-        dy = ball.y - player.y
-        distSq = dx * dx + dy * dy
+    //     player = players[id]
+    //     dx = ball.x - player.x
+    //     dy = ball.y - player.y
+    //     distSq = dx * dx + dy * dy
 
-        if (player.bounceRemaining > 0) {
-          player.radius =
-            game.playerData.radius * 1 +
-            (player.bounceExpansion - 1) * player.bounceRemaining
-          player.bounceRemaining -= player.bounceReduction
-          if (player.bounceRemaining < 0) {
-            player.bounceRemaining = 0
-            player.radius = game.playerData.radius
-          }
-        }
+    //     if (player.bounceRemaining > 0) {
+    //       player.radius =
+    //         game.playerData.radius * 1 +
+    //         (player.bounceExpansion - 1) * player.bounceRemaining
+    //       player.bounceRemaining -= player.bounceReduction
+    //       if (player.bounceRemaining < 0) {
+    //         player.bounceRemaining = 0
+    //         player.radius = game.playerData.radius
+    //       }
+    //     }
 
-        if (distSq < minPlayerDist * minPlayerDist) {
-          bounceAnimation({ player, ball })
+    //     if (distSq < minPlayerDist * minPlayerDist) {
+    //       bounceAnimation({ player, ball })
 
-          let dist = Math.sqrt(distSq) || 0.01
-          let nx = dx / dist
-          let ny = dy / dist
+    //       let dist = Math.sqrt(distSq) || 0.01
+    //       let nx = dx / dist
+    //       let ny = dy / dist
 
-          let dot = ball.vx * nx + ball.vy * ny
-          if (dot < 0) {
-            let { vx, vy } = reflectVelocity(ball.vx, ball.vy, nx, ny)
+    //       let dot = ball.vx * nx + ball.vy * ny
+    //       if (dot < 0) {
+    //         let { vx, vy } = reflectVelocity(ball.vx, ball.vy, nx, ny)
 
-            let angle = Math.atan2(vy, vx)
-            let offset = (Math.random() - 0.5) * game.ballData.randomness
-            let speed = Math.sqrt(vx * vx + vy * vy)
-            ball.vx =
-              Math.cos(angle + offset) *
-              (speed + ball.bounces * game.ballData.speedToAdd)
-            ball.vy =
-              Math.sin(angle + offset) *
-              (speed + ball.bounces * game.ballData.speedToAdd)
-            ball.bounces += 1
-          }
+    //         let angle = Math.atan2(vy, vx)
+    //         let offset = (Math.random() - 0.5) * game.ballData.randomness
+    //         let speed = Math.sqrt(vx * vx + vy * vy)
+    //         ball.vx =
+    //           Math.cos(angle + offset) *
+    //           (speed + ball.bounces * game.ballData.speedToAdd)
+    //         ball.vy =
+    //           Math.sin(angle + offset) *
+    //           (speed + ball.bounces * game.ballData.speedToAdd)
+    //         ball.bounces += 1
+    //       }
 
-          let overlap = minPlayerDist - dist
-          ball.x += nx * overlap
-          ball.y += ny * overlap
-        }
-      }
+    //       let overlap = minPlayerDist - dist
+    //       ball.x += nx * overlap
+    //       ball.y += ny * overlap
+    //     }
+    //   }
 
-      // === Bounce on polygon walls ===
-      for (let i = 0; i < polygon.length; i++) {
-        let a = polygon[i]
-        let b = polygon[(i + 1) % polygon.length]
+    //   // === Bounce on polygon walls ===
+    //   for (let i = 0; i < polygon.length; i++) {
+    //     let a = polygon[i]
+    //     let b = polygon[(i + 1) % polygon.length]
 
-        let dx = b.x - a.x
-        let dy = b.y - a.y
-        let lengthSq = dx * dx + dy * dy
+    //     let dx = b.x - a.x
+    //     let dy = b.y - a.y
+    //     let lengthSq = dx * dx + dy * dy
 
-        let t = Math.max(
-          0,
-          Math.min(1, ((ball.x - a.x) * dx + (ball.y - a.y) * dy) / lengthSq)
-        )
-        let closestX = a.x + t * dx
-        let closestY = a.y + t * dy
+    //     let t = Math.max(
+    //       0,
+    //       Math.min(1, ((ball.x - a.x) * dx + (ball.y - a.y) * dy) / lengthSq)
+    //     )
+    //     let closestX = a.x + t * dx
+    //     let closestY = a.y + t * dy
 
-        let distX = ball.x - closestX
-        let distY = ball.y - closestY
-        let distSq = distX * distX + distY * distY
+    //     let distX = ball.x - closestX
+    //     let distY = ball.y - closestY
+    //     let distSq = distX * distX + distY * distY
 
-        if (distSq < minWallDist * minWallDist) {
-          bounceAnimation({ ball })
-          let { x: normalX, y: normalY } = normalize(-dy, dx)
-          let { vx, vy } = reflectVelocity(ball.vx, ball.vy, normalX, normalY)
-          ball.vx = vx
-          ball.vy = vy
+    //     if (distSq < minWallDist * minWallDist) {
+    //       bounceAnimation({ ball })
+    //       let { x: normalX, y: normalY } = normalize(-dy, dx)
+    //       let { vx, vy } = reflectVelocity(ball.vx, ball.vy, normalX, normalY)
+    //       ball.vx = vx
+    //       ball.vy = vy
 
-          let overlap = minWallDist - Math.sqrt(distSq)
-          ball.x += normalX * overlap
-          ball.y += normalY * overlap
+    //       let overlap = minWallDist - Math.sqrt(distSq)
+    //       ball.x += normalX * overlap
+    //       ball.y += normalY * overlap
 
-          let angle = Math.atan2(ball.vy, ball.vx)
-          let offset = (Math.random() - 0.5) * game.ballData.randomness
-          let speed = Math.sqrt(ball.vx * ball.vx + ball.vy * ball.vy)
-          ball.vx =
-            Math.cos(angle + offset) *
-            (speed + ball.bounces * game.ballData.speedToAdd)
-          ball.vy =
-            Math.sin(angle + offset) *
-            (speed + ball.bounces * game.ballData.speedToAdd)
-          ball.bounces += 1
-        }
-      }
-    }
+    //       let angle = Math.atan2(ball.vy, ball.vx)
+    //       let offset = (Math.random() - 0.5) * game.ballData.randomness
+    //       let speed = Math.sqrt(ball.vx * ball.vx + ball.vy * ball.vy)
+    //       ball.vx =
+    //         Math.cos(angle + offset) *
+    //         (speed + ball.bounces * game.ballData.speedToAdd)
+    //       ball.vy =
+    //         Math.sin(angle + offset) *
+    //         (speed + ball.bounces * game.ballData.speedToAdd)
+    //       ball.bounces += 1
+    //     }
+    //   }
+    // }
   }
   io.to(gameId).emit('game', game)
 }
