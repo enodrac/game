@@ -701,7 +701,7 @@ const handleMovement = (event, start) => {
           clearInterval(lastMovement.rightInterval)
         }
       }
-      // socket.emit('player', { movement, gameId: gameData.id })
+      socket.emit('player', { movement, gameId: gameData.id })
       lastMovement = {
         ...lastMovement,
         ...movement,
@@ -713,7 +713,7 @@ const handleMovement = (event, start) => {
 }
 
 const handlePredictPlayerMovement = () => {
-  if (gameData && gameData.players[socket.id]) {
+  if (gameData && !gameData.countdownTimer && gameData.players[socket.id]) {
     let player = gameData.players[socket.id]
     let { a, b } = player.side
     let playerSpeed =

@@ -97,7 +97,7 @@ let area = {
   radius: 300
 }
 let playerData = {
-  speed: 0.005,
+  speed: 0.007,
   radius: 35
 }
 let ballData = {
