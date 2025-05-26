@@ -697,9 +697,9 @@ const handleMovement = (event, start) => {
 
 setInterval(() => {
   handlePredictPlayerMovement()
-}, 1000 / 60)
+}, 1000 / 90)
 
-let serverT =  0.5000
+let serverT = 0.5
 
 const lerp = (a, b, t) => a + (b - a) * t
 
@@ -710,13 +710,23 @@ const handlePredictPlayerMovement = () => {
       let { a, b } = player.side
       let playerSpeed =
         gameData.playerData.speed * (gameData.settings.playerSpeed / 5)
+
       if (movement && movement.right) {
         player.t = Math.max(player.goal.startT, player.t - playerSpeed)
       }
       if (movement && movement.left) {
         player.t = Math.min(player.goal.endT, player.t + playerSpeed)
       }
-      player.t = lerp(player.t, serverT, 0.1)
+
+      const delta = Math.abs(player.t - serverT)
+
+      if (delta > 0.05) {
+        player.t = serverT
+      } else if (delta > 0.001) {
+        const correctionFactor = Math.min(1, delta * 20)
+        player.t = lerp(player.t, serverT, correctionFactor)
+      }
+
       player.x = a.x + (b.x - a.x) * player.t
       player.y = a.y + (b.y - a.y) * player.t
     }
