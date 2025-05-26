@@ -153,11 +153,14 @@ socket.on('connected', () => {
 socket.on('game', (game) => {
   let serverPlayers = { ...game.players }
   delete game.players
-  gameData = { ...gameData, ...game }
   if (gameData && gameData.polygon) {
     for (let id in serverPlayers) {
       if (id === socket.id) {
+        let predictedT = gameData.players[id]?.t || 0.5
         serverT = serverPlayers[id].t
+        if (Math.abs(predictedT - serverT) > 0.05) {
+          gameData.players[id].t = lerp(player.t, serverT, 0.1)
+        }
       } else {
         gameData.players[id] = serverPlayers[id]
       }
@@ -175,6 +178,7 @@ socket.on('game', (game) => {
     }
     document.getElementById('scores').innerHTML = scores.join('')
   }
+  gameData = { ...gameData, ...game }
 })
 
 socket.on('countdownTimer', (countdownTimer) => {
@@ -466,7 +470,7 @@ socket.on('goalScored', (data) => {
 
 const engine = () => {
   requestAnimationFrame(engine)
-  if (gameData && gameData.polygon) {
+  if (gameData && gameData.polygon && socket && socket.id) {
     let canvas = document.getElementById('game_canvas')
     let canvasContext = canvas.getContext('2d')
     // Clear canvas
@@ -477,7 +481,7 @@ const engine = () => {
     canvas.width = window.innerWidth
     canvas.height = window.innerHeight
 
-    let { a, b } = gameData.players?.[socket.id].side
+    let { a, b } = gameData.players[socket.id].side
     let mx = (a.x + b.x) / 2
     let my = (a.y + b.y) / 2
     let cx = gameData.area.x
@@ -716,15 +720,6 @@ const handlePredictPlayerMovement = () => {
       }
       if (movement && movement.left) {
         player.t = Math.min(player.goal.endT, player.t + playerSpeed)
-      }
-
-      const delta = Math.abs(player.t - serverT)
-
-      if (delta > 0.05) {
-        player.t = serverT
-      } else if (delta > 0.001) {
-        const correctionFactor = Math.min(1, delta * 20)
-        player.t = lerp(player.t, serverT, correctionFactor)
       }
 
       player.x = a.x + (b.x - a.x) * player.t
